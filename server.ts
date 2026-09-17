@@ -97,7 +97,7 @@ Nhiệm vụ của bạn là:
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+      model: "gemini-3.6-flash",
       contents: { parts: contents },
       config: {
         systemInstruction: systemPrompt,

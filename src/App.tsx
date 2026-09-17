@@ -10,6 +10,7 @@ import { CategoryConfigModal } from "./components/CategoryConfigModal";
 import { IntakeModal } from "./components/IntakeModal";
 import { DocumentDetailModal } from "./components/DocumentDetailModal";
 import { PrintDocumentModal } from "./components/PrintDocumentModal";
+import { GoogleDriveConfigModal } from "./components/GoogleDriveConfigModal";
 import { DashboardStats } from "./components/DashboardStats";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { DocumentCategory, DocumentRecord } from "./types";
@@ -17,11 +18,23 @@ import {
   getCategories,
   saveCategories,
   getAllDocuments,
+  getDocumentById,
   saveDocument,
   deleteDocument,
   seedInitialDocumentsIfEmpty,
   incrementCategoryCount,
 } from "./services/storage";
+import {
+  getGoogleDriveConfig,
+  GoogleDriveConfig,
+  uploadFileToGoogleDrive,
+  deleteFileFromGoogleDrive,
+  findDriveFileByName,
+  readDatabaseFromGoogleDrive,
+  saveDatabaseToGoogleDrive,
+  DRIVE_DB_FILENAME,
+  DriveDatabasePayload,
+} from "./services/googleDriveService";
 
 export default function App() {
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
@@ -31,9 +44,120 @@ export default function App() {
   // Modals state
   const [isIntakeOpen, setIsIntakeOpen] = useState<boolean>(false);
   const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
+  const [isGoogleDriveOpen, setIsGoogleDriveOpen] = useState<boolean>(false);
+  const [driveConfig, setDriveConfig] = useState<GoogleDriveConfig>(getGoogleDriveConfig());
   const [selectedDocForDetail, setSelectedDocForDetail] = useState<DocumentRecord | null>(null);
   const [selectedDocForPrint, setSelectedDocForPrint] = useState<DocumentRecord | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isDriveSyncing, setIsDriveSyncing] = useState<boolean>(false);
+
+  // Toast Notification state
+  const [toastNotification, setToastNotification] = useState<{
+    type: "success" | "error" | "info";
+    message: string;
+  } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
+    setToastNotification({ message, type });
+    setTimeout(() => {
+      setToastNotification(null);
+    }, 4500);
+  };
+
+  // Sync with Google Drive central database file
+  const syncWithGoogleDrive = async (isManual = false) => {
+    const currentConfig = getGoogleDriveConfig();
+    if (!currentConfig.accessToken) {
+      if (isManual) {
+        showToast("Vui lòng kết nối tài khoản Google Drive trước để đồng bộ.", "info");
+      }
+      return;
+    }
+
+    setIsDriveSyncing(true);
+    try {
+      // 1. Check if database file exists on Google Drive
+      const remoteDbFile = await findDriveFileByName(
+        currentConfig.accessToken,
+        DRIVE_DB_FILENAME,
+        currentConfig.folderId
+      );
+
+      if (remoteDbFile) {
+        // Read remote database
+        const remoteData = await readDatabaseFromGoogleDrive(
+          currentConfig.accessToken,
+          remoteDbFile.id
+        );
+
+        if (remoteData) {
+          // Merge / Update categories from remote if newer
+          if (Array.isArray(remoteData.categories) && remoteData.categories.length > 0) {
+            saveCategories(remoteData.categories);
+            setCategories(remoteData.categories);
+          }
+
+          // Merge / Save documents into local IndexedDB
+          if (Array.isArray(remoteData.documents)) {
+            for (const rDoc of remoteData.documents) {
+              await saveDocument(rDoc);
+            }
+            const refreshedDocs = await getAllDocuments();
+            setDocuments(refreshedDocs);
+          }
+
+          if (isManual) {
+            showToast(
+              `Đã tải và đồng bộ thành công dữ liệu từ Google Drive (${remoteData.documents.length} văn bản).`,
+              "success"
+            );
+          }
+        }
+      } else {
+        // If file doesn't exist on Google Drive yet, push current local state to Google Drive as initial DB
+        const localCats = getCategories();
+        const localDocs = await getAllDocuments();
+        const payload: DriveDatabasePayload = {
+          version: 1,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentConfig.userEmail,
+          categories: localCats,
+          documents: localDocs,
+        };
+
+        await saveDatabaseToGoogleDrive(currentConfig.accessToken, currentConfig.folderId, payload);
+        if (isManual) {
+          showToast("Đã khởi tạo kho dữ liệu dùng chung trên Google Drive thành công!", "success");
+        }
+      }
+    } catch (syncErr: any) {
+      console.warn("Lỗi đồng bộ cơ sở dữ liệu Google Drive:", syncErr);
+      if (isManual) {
+        showToast(`Chưa thể đồng bộ Google Drive: ${syncErr.message || "Lỗi kết nối"}`, "error");
+      }
+    } finally {
+      setIsDriveSyncing(false);
+    }
+  };
+
+  // Push local DB to Google Drive
+  const pushLocalDbToDrive = async (updatedCats: DocumentCategory[], updatedDocs: DocumentRecord[]) => {
+    const currentConfig = getGoogleDriveConfig();
+    if (!currentConfig.accessToken) return;
+
+    try {
+      const payload: DriveDatabasePayload = {
+        version: 1,
+        lastUpdated: new Date().toISOString(),
+        updatedBy: currentConfig.userEmail,
+        categories: updatedCats,
+        documents: updatedDocs,
+      };
+      await saveDatabaseToGoogleDrive(currentConfig.accessToken, currentConfig.folderId, payload);
+    } catch (err) {
+      console.warn("Lỗi cập nhật database lên Google Drive:", err);
+    }
+  };
 
   // Initialize data on mount
   useEffect(() => {
@@ -44,6 +168,12 @@ export default function App() {
         const loadedDocs = await getAllDocuments();
         setCategories(loadedCats);
         setDocuments(loadedDocs);
+
+        // Auto-sync with Google Drive if already connected
+        const currentConfig = getGoogleDriveConfig();
+        if (currentConfig.accessToken) {
+          await syncWithGoogleDrive(false);
+        }
       } catch (e) {
         console.error("Failed to initialize database", e);
       } finally {
@@ -54,26 +184,102 @@ export default function App() {
   }, []);
 
   // Category changes handler
-  const handleSaveCategories = (updated: DocumentCategory[]) => {
+  const handleSaveCategories = async (updated: DocumentCategory[]) => {
     setCategories(updated);
     saveCategories(updated);
+    const curDocs = await getAllDocuments();
+    pushLocalDbToDrive(updated, curDocs);
   };
 
-  // New Document Created handler
+  // New Document Created handler (Includes BYOS Google Drive upload)
   const handleDocumentCreated = async (newDoc: DocumentRecord) => {
-    await saveDocument(newDoc);
-    incrementCategoryCount(newDoc.categoryId);
+    let docToSave = { ...newDoc };
+
+    // If Google Drive is configured and user enabled auto-upload
+    const currentDriveConfig = getGoogleDriveConfig();
+    if (
+      currentDriveConfig.accessToken &&
+      currentDriveConfig.autoUpload &&
+      docToSave.images &&
+      docToSave.images.length > 0
+    ) {
+      showToast("Đang đồng bộ bản scan lên Google Drive...", "info");
+      try {
+        const primaryImg = docToSave.images[0];
+        // Lấy đúng phần mở rộng gốc của tệp (ví dụ .pdf, .docx, .png, .jpg...)
+        let ext = "pdf";
+        if (primaryImg.name && primaryImg.name.includes(".")) {
+          ext = primaryImg.name.split(".").pop()?.toLowerCase() || "pdf";
+        } else if (primaryImg.mimeType) {
+          if (primaryImg.mimeType.includes("pdf")) ext = "pdf";
+          else if (primaryImg.mimeType.includes("png")) ext = "png";
+          else if (primaryImg.mimeType.includes("jpeg") || primaryImg.mimeType.includes("jpg")) ext = "jpg";
+        }
+
+        const safeTitle = docToSave.title.replace(/[\/\\:?*"<>|]/g, "_").slice(0, 40).trim();
+        const cleanDocName = `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}.${ext}`;
+        const driveResult = await uploadFileToGoogleDrive(
+          currentDriveConfig.accessToken,
+          currentDriveConfig.folderId,
+          cleanDocName,
+          primaryImg.dataUrl,
+          `Văn bản số ${docToSave.docNumber}: ${docToSave.title}`
+        );
+
+        docToSave.driveFileId = driveResult.id;
+        docToSave.driveWebViewLink = driveResult.webViewLink;
+        docToSave.driveThumbnailLink = driveResult.thumbnailLink;
+        docToSave.history.push({
+          id: `h-drive-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          action: "ĐỒNG BỘ GOOGLE DRIVE",
+          user: currentDriveConfig.userEmail || "Google Drive Sync",
+          details: `Đã lưu bản scan lên thư mục Google Drive: [${driveResult.name}]`,
+        });
+
+        showToast(`Đã lưu bản scan lên Google Drive thành công! (${driveResult.name})`, "success");
+      } catch (driveErr: any) {
+        console.warn("Không thể tải tệp lên Google Drive:", driveErr);
+        showToast(`Chưa thể tải lên Google Drive: ${driveErr.message || "Lỗi kết nối"}`, "error");
+      }
+    } else if (!currentDriveConfig.accessToken) {
+      showToast("Đã lưu cục bộ. Hãy kết nối Google Drive nếu muốn dùng chung dữ liệu nhiều máy.", "info");
+    }
+
+    await saveDocument(docToSave);
+    incrementCategoryCount(docToSave.categoryId);
     const updatedCats = getCategories();
     const updatedDocs = await getAllDocuments();
     setCategories(updatedCats);
     setDocuments(updatedDocs);
+
+    // Đồng bộ ngay số đếm và sổ văn bản mới lên file database Google Drive
+    await pushLocalDbToDrive(updatedCats, updatedDocs);
   };
 
-  // Document Deleted handler
+  // Document Deleted handler (Sync delete from Google Drive + show Toast)
   const handleDeleteDocument = async (id: string) => {
-    await deleteDocument(id);
-    const updatedDocs = await getAllDocuments();
-    setDocuments(updatedDocs);
+    try {
+      const docToDelete = await getDocumentById(id);
+      const currentDriveConfig = getGoogleDriveConfig();
+
+      if (docToDelete?.driveFileId && currentDriveConfig.accessToken) {
+        showToast(`Đang xóa tệp ${docToDelete.docNumber} trên Google Drive...`, "info");
+        await deleteFileFromGoogleDrive(currentDriveConfig.accessToken, docToDelete.driveFileId);
+      }
+
+      await deleteDocument(id);
+      const updatedDocs = await getAllDocuments();
+      setDocuments(updatedDocs);
+
+      showToast(
+        `Đã xóa văn bản ${docToDelete?.docNumber || id} khỏi sổ đăng ký và dọn dẹp Google Drive.`,
+        "success"
+      );
+    } catch (e: any) {
+      console.error("Lỗi khi xóa văn bản:", e);
+      showToast(`Không thể xóa văn bản: ${e.message}`, "error");
+    }
   };
 
   return (
@@ -84,6 +290,10 @@ export default function App() {
         onTabChange={setCurrentTab}
         onOpenIntake={() => setIsIntakeOpen(true)}
         onOpenConfig={() => setIsConfigOpen(true)}
+        onOpenGoogleDrive={() => setIsGoogleDriveOpen(true)}
+        onSyncDrive={() => syncWithGoogleDrive(true)}
+        isDriveConnected={!!driveConfig.userEmail}
+        isSyncing={isDriveSyncing}
         totalDocsCount={documents.length}
       />
 
@@ -126,6 +336,18 @@ export default function App() {
       />
 
       {/* Modals */}
+      {/* 0. Personal Google Drive BYOS Config Modal */}
+      <GoogleDriveConfigModal
+        isOpen={isGoogleDriveOpen}
+        onClose={() => setIsGoogleDriveOpen(false)}
+        onConfigUpdated={(cfg) => {
+          setDriveConfig(cfg);
+          if (cfg.accessToken) {
+            syncWithGoogleDrive(true);
+          }
+        }}
+      />
+
       {/* 1. Category Prefix/Suffix & Numbering Master Config Modal */}
       <CategoryConfigModal
         isOpen={isConfigOpen}
@@ -164,6 +386,32 @@ export default function App() {
         isOpen={!!selectedDocForPrint}
         onClose={() => setSelectedDocForPrint(null)}
       />
+
+      {/* Floating Toast Notification */}
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-50 animate-bounce-in max-w-md">
+          <div
+            className={`px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 text-xs font-medium backdrop-blur-md ${
+              toastNotification.type === "success"
+                ? "bg-emerald-950/90 text-emerald-200 border-emerald-500/50 shadow-emerald-900/30"
+                : toastNotification.type === "error"
+                ? "bg-red-950/90 text-red-200 border-red-500/50 shadow-red-900/30"
+                : "bg-slate-900/95 text-blue-200 border-blue-500/50 shadow-blue-900/30"
+            }`}
+          >
+            <div
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                toastNotification.type === "success"
+                  ? "bg-emerald-400 animate-ping"
+                  : toastNotification.type === "error"
+                  ? "bg-red-400 animate-ping"
+                  : "bg-blue-400 animate-pulse"
+              }`}
+            />
+            <span className="leading-snug">{toastNotification.message}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

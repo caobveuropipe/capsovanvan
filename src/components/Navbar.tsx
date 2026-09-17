@@ -9,6 +9,7 @@ import {
   Sparkles,
   Printer,
   ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 
 interface NavbarProps {
@@ -16,6 +17,10 @@ interface NavbarProps {
   onTabChange: (tab: "archive" | "stats") => void;
   onOpenIntake: () => void;
   onOpenConfig: () => void;
+  onOpenGoogleDrive?: () => void;
+  onSyncDrive?: () => void;
+  isDriveConnected?: boolean;
+  isSyncing?: boolean;
   totalDocsCount: number;
 }
 
@@ -24,6 +29,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onTabChange,
   onOpenIntake,
   onOpenConfig,
+  onOpenGoogleDrive,
+  onSyncDrive,
+  isDriveConnected = false,
+  isSyncing = false,
   totalDocsCount,
 }) => {
   return (
@@ -38,14 +47,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="font-bold text-base sm:text-lg tracking-tight text-white truncate">
-                  DOCNUM AI
+                  Documents Number
                 </span>
                 <span className="hidden xs:inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 shrink-0">
-                  <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-300" /> Cấp số OCR
+                  <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-300" /> Cấp số tự động
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-normal truncate max-w-[170px] sm:max-w-xs md:max-w-md hidden sm:block">
-                Tiếp nhận yêu cầu, phân loại OCR & cấp số văn bản tự động
+                Tiếp nhận và cấp số văn bản
               </p>
             </div>
           </div>
@@ -82,6 +91,44 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Thống kê số liệu
               </button>
             </div>
+
+            {/* Google Drive BYOS Storage Config */}
+            {onOpenGoogleDrive && (
+              <div className="flex items-center gap-1">
+                <button
+                  id="btn-open-google-drive"
+                  onClick={onOpenGoogleDrive}
+                  className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs sm:text-sm font-medium transition-colors cursor-pointer shadow-sm min-h-[38px] ${
+                    isDriveConnected
+                      ? "bg-emerald-950/40 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/40"
+                      : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-slate-600"
+                  }`}
+                  title="Lưu trữ văn bản trên Google Drive cá nhân (BYOS)"
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      isDriveConnected ? "bg-emerald-400 animate-pulse" : "bg-slate-500"
+                    }`}
+                  />
+                  <span>Google Drive</span>
+                </button>
+
+                {/* Direct Sync Button if Connected */}
+                {isDriveConnected && onSyncDrive && (
+                  <button
+                    id="btn-sync-google-drive"
+                    onClick={onSyncDrive}
+                    disabled={isSyncing}
+                    className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition-colors cursor-pointer shadow-sm min-h-[38px] min-w-[38px] flex items-center justify-center disabled:opacity-50"
+                    title="Đồng bộ danh mục & sổ văn bản với Google Drive (Để dùng chung nhiều máy)"
+                  >
+                    <RefreshCw
+                      className={`w-4 h-4 text-emerald-400 ${isSyncing ? "animate-spin text-blue-400" : ""}`}
+                    />
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Category Prefix/Suffix Configuration (Desktop/Tablet) */}
             <button

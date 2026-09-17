@@ -81,6 +81,9 @@ export interface DocumentRecord {
   keywords: string[];
   images: DocumentImage[];
   emailMetadata?: EmailMetadata;
+  driveFileId?: string;
+  driveWebViewLink?: string;
+  driveThumbnailLink?: string;
   verificationCode: string;
   createdBy: string;
   notes: string;

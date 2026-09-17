@@ -13,7 +13,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/QĐ-VCCORP",
     formatTemplate: "{NUM}/QĐ-VCCORP",
-    currentCount: 124,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "VP",
@@ -29,7 +29,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/CV-VP",
     formatTemplate: "{NUM}/CV-{DEPT}",
-    currentCount: 432,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "VP",
@@ -45,7 +45,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/TTr-BGD",
     formatTemplate: "{NUM}/TTr-{DEPT}",
-    currentCount: 88,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "TCKT",
@@ -61,7 +61,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "HĐ-",
     suffix: "/2026/VCC",
     formatTemplate: "HĐ-{NUM_PAD3}/{YEAR}/VCC",
-    currentCount: 56,
+    currentCount: 0,
     paddingDigits: 3,
     resetYearly: true,
     defaultDepartment: "KD",
@@ -77,7 +77,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/TB-VP",
     formatTemplate: "{NUM}/TB-{DEPT}",
-    currentCount: 215,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "VP",
@@ -93,7 +93,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/BB-HC",
     formatTemplate: "{NUM}/BB-{DEPT}",
-    currentCount: 67,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "HCNS",
@@ -109,7 +109,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/KH-VCC",
     formatTemplate: "{NUM}/KH-{YEAR}",
-    currentCount: 34,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "VP",
@@ -125,7 +125,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/BC-TCKT",
     formatTemplate: "{NUM}/BC-{DEPT}",
-    currentCount: 145,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "TCKT",
@@ -141,7 +141,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/GM-VP",
     formatTemplate: "{NUM}/GM-VP",
-    currentCount: 92,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "VP",
@@ -157,7 +157,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "",
     suffix: "/CT-TGĐ",
     formatTemplate: "{NUM}/CT-TGĐ",
-    currentCount: 18,
+    currentCount: 0,
     paddingDigits: 0,
     resetYearly: true,
     defaultDepartment: "BGD",
@@ -173,7 +173,7 @@ export const INITIAL_CATEGORIES: DocumentCategory[] = [
     prefix: "ĐX-",
     suffix: "",
     formatTemplate: "ĐX-{NUM_PAD3}/{YEAR}",
-    currentCount: 73,
+    currentCount: 0,
     paddingDigits: 3,
     resetYearly: true,
     defaultDepartment: "HCNS",
@@ -414,19 +414,19 @@ export function createSampleDocumentImage(docNumber: string, title: string, cate
     </g>
   </svg>`;
 
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  try {
+    const base64 = btoa(unescape(encodeURIComponent(svg)));
+    return `data:image/svg+xml;base64,${base64}`;
+  } catch (e) {
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
 }
 
-// Seed initial documents if database is empty
+// Seed initial documents if database is empty (Disabled - starts clean)
 export async function seedInitialDocumentsIfEmpty(): Promise<void> {
-  const existing = await getAllDocuments();
-  if (existing.length > 0) return;
-
-  const now = new Date();
-  const d1 = new Date(now.getTime() - 2 * 3600 * 1000).toISOString();
-  const d2 = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
-  const d3 = new Date(now.getTime() - 48 * 3600 * 1000).toISOString();
-
+  // Purge any legacy sample docs
+  await purgeMockDocumentsIfPresent();
+  return;
   const sampleDocs: DocumentRecord[] = [
     {
       id: "doc-sample-1",
@@ -582,3 +582,59 @@ export async function seedInitialDocumentsIfEmpty(): Promise<void> {
     await saveDocument(doc);
   }
 }
+
+// Purge legacy mock documents if found
+export async function purgeMockDocumentsIfPresent(): Promise<void> {
+  const mockIds = ["doc-sample-1", "doc-sample-2", "doc-sample-3"];
+  for (const id of mockIds) {
+    try {
+      await deleteDocument(id);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Check if categories still have high default numbers from legacy mock data
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_CATEGORIES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        // If currentCount is still the old mock numbers (124, 432, etc.) and no user docs exist
+        const allDocs = await getAllDocuments();
+        if (allDocs.length === 0) {
+          const reset = parsed.map((cat: DocumentCategory) => ({
+            ...cat,
+            currentCount: 0,
+          }));
+          saveCategories(reset);
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Clear all documents from IndexedDB
+export async function clearAllDocuments(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_DOCS], "readwrite");
+    const store = transaction.objectStore(STORE_DOCS);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Reset system to clean state: clear documents and reset category counters to 0
+export async function resetSystemToCleanState(): Promise<void> {
+  await clearAllDocuments();
+  const resetCats = INITIAL_CATEGORIES.map((cat) => ({
+    ...cat,
+    currentCount: 0,
+  }));
+  saveCategories(resetCats);
+}
+

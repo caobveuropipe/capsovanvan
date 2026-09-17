@@ -186,8 +186,9 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     setImages(newImages);
     setSelectedImageIndex(newImages.length - 1);
 
-    // Auto trigger AI OCR for captured photo
-    triggerOcrAnalysis(dataUrl, "image/jpeg");
+    if (!title) {
+      setTitle(`Văn bản chụp camera ${new Date().toLocaleTimeString("vi-VN")}`);
+    }
   };
 
   // Switch camera facing
@@ -220,7 +221,9 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
           const updated = [...prev, newImg];
           if (updated.length === 1 || prev.length === 0) {
             setSelectedImageIndex(0);
-            triggerOcrAnalysis(dataUrl, file.type || "image/jpeg");
+            if (!title) {
+              setTitle(file.name.replace(/\.[^/.]+$/, ""));
+            }
           }
           return updated;
         });
@@ -315,7 +318,13 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
     setImages([sampleImg]);
     setSelectedImageIndex(0);
-    triggerOcrAnalysis(sampleImgUrl, "image/svg+xml");
+    setSelectedCategoryId(matchedCat.id);
+    setTitle(sampleTitle);
+    setIssuingAuthority(sampleAuthority);
+    setSigner(sampleSigner);
+    setDepartmentCode(sampleDept);
+    setOcrConfidence(100);
+    setOcrSuccessNote(`Đã áp dụng mẫu ${matchedCat.name}`);
   };
 
   // Perform AI OCR and Intelligent Classification
@@ -951,7 +960,7 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                         Kéo thả file ảnh / scan văn bản hoặc bấm để chọn
                       </span>
                       <span className="text-[11px] text-slate-400 mt-0.5">
-                        Hỗ trợ PNG, JPG, WEBP, PDF (Tự động nhận diện OCR)
+                        Hỗ trợ PNG, JPG, WEBP, PDF (Tải lên nhiều trang)
                       </span>
                       <input
                         id="file-upload-input"
@@ -963,43 +972,50 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                       />
                     </label>
 
-                    {/* Quick sample document buttons */}
-                    <div className="bg-white p-3 rounded-xl border border-slate-200">
-                      <div className="text-[11px] font-bold text-slate-500 mb-2 flex items-center justify-between">
-                        <span>Dùng văn bản mẫu thử nghiệm OCR:</span>
-                        <span className="text-[10px] text-blue-600 font-semibold">1-Click Test</span>
+                    {/* Attached files list & page count (No preview image) */}
+                    {images.length > 0 && (
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                          <span className="flex items-center gap-1.5 text-blue-700">
+                            <FileText className="w-4 h-4 text-blue-600" />
+                            <span>Tài liệu đính kèm ({images.length} trang)</span>
+                          </span>
+                          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            Đã nạp {images.length} trang
+                          </span>
+                        </div>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {images.map((img, idx) => (
+                            <div
+                              key={img.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                            >
+                              <div className="flex items-center gap-2 truncate min-w-0">
+                                <span className="w-5 h-5 rounded bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                  {idx + 1}
+                                </span>
+                                <span className="font-medium text-slate-800 truncate text-[11px]" title={img.name}>
+                                  {img.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  Trang {idx + 1} • {(img.size / 1024).toFixed(1)} KB
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}
+                                  className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-200 cursor-pointer"
+                                  title="Xóa trang này"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => loadSampleDocument("QD")}
-                          className="px-2 py-1.5 text-left bg-slate-50 hover:bg-blue-50 hover:border-blue-300 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-                        >
-                          📜 Mẫu Quyết định (QĐ)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => loadSampleDocument("CV")}
-                          className="px-2 py-1.5 text-left bg-slate-50 hover:bg-blue-50 hover:border-blue-300 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-                        >
-                          📨 Mẫu Công văn (CV)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => loadSampleDocument("HD")}
-                          className="px-2 py-1.5 text-left bg-slate-50 hover:bg-blue-50 hover:border-blue-300 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-                        >
-                          🤝 Mẫu Hợp đồng (HĐ)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => loadSampleDocument("TTR")}
-                          className="px-2 py-1.5 text-left bg-slate-50 hover:bg-blue-50 hover:border-blue-300 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-                        >
-                          📑 Mẫu Tờ trình (TTr)
-                        </button>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 )}
 
@@ -1335,85 +1351,7 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                     </button>
                   </div>
                 )}
-
-                {/* Scanned/Uploaded Images Gallery preview */}
-                {images.length > 0 && (
-                  <div className="mt-4 pt-3 border-t border-slate-200">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2">
-                      <span>Văn bản trích xuất ({images.length} trang)</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const current = images[selectedImageIndex];
-                          if (current) {
-                            triggerOcrAnalysis(current.dataUrl, current.mimeType);
-                          }
-                        }}
-                        disabled={isOcrProcessing}
-                        className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
-                      >
-                        <RefreshCw className="w-3 h-3" /> Quét lại OCR
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                      {images.map((img, idx) => (
-                        <div
-                          key={img.id}
-                          onClick={() => setSelectedImageIndex(idx)}
-                          className={`relative w-16 h-20 rounded-lg overflow-hidden border-2 cursor-pointer shrink-0 transition-all ${
-                            selectedImageIndex === idx
-                              ? "border-blue-600 ring-2 ring-blue-500/20 shadow-sm"
-                              : "border-slate-300 opacity-70 hover:opacity-100"
-                          }`}
-                        >
-                          <img
-                            src={img.dataUrl}
-                            alt={`Trang ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] text-center font-bold">
-                            Trang {idx + 1}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
-
-              {/* AI Processing Banner */}
-              {isOcrProcessing && (
-                <div className="mt-3 p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center gap-3 animate-pulse">
-                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                  <div>
-                    <div className="font-bold">AI Gemini đang đọc và phân tích tệp văn bản đính kèm...</div>
-                    <div className="text-[11px] text-blue-700">
-                      Tự động trích xuất OCR, phân loại danh mục và gán số hiệu
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* OCR Success Note & Confidence badge */}
-              {ocrConfidence !== null && !isOcrProcessing && (
-                <div className="mt-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-bold text-emerald-800">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>Đã trích xuất & nhận diện AI</span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-200/70 text-emerald-800 font-bold font-mono text-[11px]">
-                      Độ tin cậy: {ocrConfidence}%
-                    </span>
-                  </div>
-                  {ocrSuccessNote && (
-                    <p className="text-[11px] text-emerald-700 font-medium pl-5.5">
-                      {ocrSuccessNote}
-                    </p>
-                  )}
-                </div>
-              )}
               {/* Mobile Step 1 Next Action Button */}
               <div className="lg:hidden mt-4 pt-3 border-t border-slate-200">
                 <button
@@ -1538,6 +1476,26 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                       />
                     </div>
                   </div>
+
+                  {/* Attached file status & page count */}
+                  {images.length > 0 && (
+                    <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        <div>
+                          <span className="font-bold text-slate-800">
+                            Tệp đính kèm: {images.length} trang
+                          </span>
+                          <div className="text-[11px] text-slate-500 truncate max-w-xs sm:max-w-md">
+                            {images.map((img) => img.name).join(", ")}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-blue-600 text-white font-bold text-[11px] shrink-0">
+                        {images.length} trang
+                      </span>
+                    </div>
+                  )}
 
                   {/* Recipient & Department & Date */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -23,7 +23,11 @@ import {
   Clock,
   Mail,
   Camera,
+  ExternalLink,
+  HardDrive,
   Upload,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { DocumentCategory, DocumentRecord, IntakeSource } from "../types";
 import { formatVietnameseDate, formatVietnameseDateTime } from "../utils/numberGenerator";
@@ -48,9 +52,31 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
   const [selectedSourceFilter, setSelectedSourceFilter] = useState<string>("ALL");
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "number">("newest");
+  const categoryScrollRef = React.useRef<HTMLDivElement | null>(null);
+
+  const scrollCategories = (direction: "left" | "right") => {
+    if (categoryScrollRef.current) {
+      categoryScrollRef.current.scrollBy({
+        left: direction === "left" ? -240 : 240,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  // Chỉ hiển thị các loại văn bản thực tế đã phát sinh tài liệu trong kho lưu trữ
+  const activeCategories = useMemo(() => {
+    if (documents.length === 0) return [];
+    // Tập hợp categoryId hoặc categoryCode có trong documents
+    const docCategoryIds = new Set(documents.map((d) => d.categoryId));
+    const docCategoryCodes = new Set(documents.map((d) => d.categoryCode));
+    
+    return categories.filter(
+      (c) => docCategoryIds.has(c.id) || docCategoryCodes.has(c.code)
+    );
+  }, [categories, documents]);
 
   // Filtered documents
   const filteredDocs = useMemo(() => {
@@ -253,63 +279,97 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
           </div>
         </div>
 
-        {/* Category Filter Chips Bar */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 scrollbar-none">
-          <button
-            onClick={() => setSelectedCategoryFilter("ALL")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all cursor-pointer ${
-              selectedCategoryFilter === "ALL"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-            }`}
+        {/* Category Filter Chips Bar with Scroll Buttons & Visible Scrollbar */}
+        <div className="relative flex items-center group">
+          {/* Scroll Left Button (chỉ hiện khi có nhiều danh mục) */}
+          {activeCategories.length > 4 && (
+            <button
+              type="button"
+              onClick={() => scrollCategories("left")}
+              className="hidden sm:flex items-center justify-center w-7 h-7 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200 shadow-sm cursor-pointer shrink-0 mr-1 z-10 transition-all hover:scale-105"
+              title="Cuộn sang trái"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Scrollable Container with custom visible scrollbar */}
+          <div
+            ref={categoryScrollRef}
+            className="flex-1 flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 scroll-smooth category-filter-scrollbar"
+            style={{
+              scrollbarWidth: "thin",
+              scrollbarColor: "#94a3b8 #f1f5f9",
+            }}
           >
-            Tất cả ({documents.length})
-          </button>
+            <button
+              onClick={() => setSelectedCategoryFilter("ALL")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all cursor-pointer ${
+                selectedCategoryFilter === "ALL"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+              }`}
+            >
+              Tất cả ({documents.length})
+            </button>
 
-          {categories.map((c) => {
-            const count = documents.filter(
-              (d) => d.categoryId === c.id || d.categoryCode === c.code
-            ).length;
-            const isSelected = selectedCategoryFilter === c.id;
+            {activeCategories.map((c) => {
+              const count = documents.filter(
+                (d) => d.categoryId === c.id || d.categoryCode === c.code
+              ).length;
+              const isSelected = selectedCategoryFilter === c.id;
 
-            return (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCategoryFilter(c.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isSelected
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                }`}
-              >
-                <span>{c.name}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                    isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedCategoryFilter(c.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700"
                   }`}
                 >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                  <span>{c.name}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
 
-          <div className="border-l border-slate-200 pl-2 ml-1 flex items-center gap-1 shrink-0">
-            <span className="text-[11px] text-slate-400 font-medium mr-1">Nguồn:</span>
-            {["ALL", "UPLOAD", "CAMERA", "EMAIL"].map((src) => (
-              <button
-                key={src}
-                onClick={() => setSelectedSourceFilter(src)}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold cursor-pointer ${
-                  selectedSourceFilter === src
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                {src === "ALL" ? "Tất cả nguồn" : getSourceLabel(src as IntakeSource)}
-              </button>
-            ))}
+            <div className="border-l border-slate-200 pl-2 ml-1 flex items-center gap-1 shrink-0">
+              <span className="text-[11px] text-slate-400 font-medium mr-1">Nguồn:</span>
+              {["ALL", "UPLOAD", "CAMERA", "EMAIL"].map((src) => (
+                <button
+                  key={src}
+                  onClick={() => setSelectedSourceFilter(src)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-semibold cursor-pointer ${
+                    selectedSourceFilter === src
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {src === "ALL" ? "Tất cả nguồn" : getSourceLabel(src as IntakeSource)}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Scroll Right Button (chỉ hiện khi có nhiều danh mục) */}
+          {activeCategories.length > 4 && (
+            <button
+              type="button"
+              onClick={() => scrollCategories("right")}
+              className="hidden sm:flex items-center justify-center w-7 h-7 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200 shadow-sm cursor-pointer shrink-0 ml-1 z-10 transition-all hover:scale-105"
+              title="Cuộn sang phải"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -434,6 +494,21 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                       )}
                     </button>
 
+                    {/* Google Drive Link if synced */}
+                    {doc.driveWebViewLink && (
+                      <a
+                        href={doc.driveWebViewLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Mở file trên Google Drive"
+                        className="p-1.5 text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-medium"
+                      >
+                        <HardDrive className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+
                     {/* Print */}
                     <button
                       onClick={(e) => {
@@ -518,6 +593,19 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                         >
                           {copiedId === doc.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
+                        {/* Google Drive Link if synced */}
+                        {doc.driveWebViewLink && (
+                          <a
+                            href={doc.driveWebViewLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Mở trên Google Drive"
+                            className="p-1 text-emerald-600 hover:text-emerald-700 bg-emerald-50 rounded"
+                          >
+                            <HardDrive className="w-3.5 h-3.5" />
+                          </a>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
