@@ -23,6 +23,9 @@ import {
   Share2,
   ExternalLink,
   HardDrive,
+  File,
+  Eye,
+  AlertCircle,
 } from "lucide-react";
 import { DocumentRecord } from "../types";
 import {
@@ -58,6 +61,32 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 
   const currentImage = doc.images && doc.images[activeImageIndex] ? doc.images[activeImageIndex] : null;
 
+  // Detect file formats
+  const imgName = currentImage?.name?.toLowerCase() || "";
+  const imgMime = currentImage?.mimeType?.toLowerCase() || "";
+  const imgData = currentImage?.dataUrl || "";
+
+  const isPdf =
+    imgMime.includes("pdf") ||
+    imgName.endsWith(".pdf") ||
+    imgData.startsWith("data:application/pdf");
+
+  const isDocx =
+    imgMime.includes("word") ||
+    imgMime.includes("officedocument") ||
+    imgName.endsWith(".docx") ||
+    imgName.endsWith(".doc");
+
+  const isRawImage =
+    !isPdf &&
+    !isDocx &&
+    (imgMime.startsWith("image/") ||
+      imgData.startsWith("data:image/") ||
+      imgName.endsWith(".png") ||
+      imgName.endsWith(".jpg") ||
+      imgName.endsWith(".jpeg") ||
+      imgName.endsWith(".webp"));
+
   const handleCopyNumber = () => {
     navigator.clipboard.writeText(doc.docNumber);
     setIsCopied(true);
@@ -71,10 +100,11 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   };
 
   const handleDownloadImage = () => {
-    if (!currentImage) return;
+    if (!currentImage?.dataUrl) return;
     const link = window.document.createElement("a");
     link.href = currentImage.dataUrl;
-    link.download = `Van_Ban_${doc.docNumber.replace(/[\/\\]/g, "_")}_Trang_${activeImageIndex + 1}.png`;
+    const ext = isPdf ? "pdf" : isDocx ? "docx" : "png";
+    link.download = currentImage.name || `Van_Ban_${doc.docNumber.replace(/[\/\\]/g, "_")}_Trang_${activeImageIndex + 1}.${ext}`;
     window.document.body.appendChild(link);
     link.click();
     window.document.body.removeChild(link);
@@ -150,7 +180,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                   : "bg-slate-900 text-slate-400 hover:text-slate-200"
               }`}
             >
-              Ảnh văn bản ({doc.images?.length || 0})
+              {isPdf ? "Tệp PDF" : isDocx ? "Tệp Word" : `Ảnh văn bản (${doc.images?.length || 0})`}
             </button>
             <button
               type="button"
@@ -166,64 +196,143 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Content: 2-column layout (Left: Image viewer, Right: Metadata & OCR) */}
+        {/* Content: 2-column layout (Left: Image/Document viewer, Right: Metadata & OCR) */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
-          {/* Left Column: Interactive Document Image Viewer (7 cols) */}
+          {/* Left Column: Interactive Document Viewer (7 cols) */}
           <div className={`lg:col-span-7 bg-slate-950 p-3 sm:p-4 overflow-y-auto ${mobileView === "image" ? "flex flex-col justify-between" : "hidden lg:flex lg:flex-col lg:justify-between"} border-r border-slate-800 select-none`}>
             {/* Viewer Toolbar */}
             <div className="flex items-center justify-between bg-slate-900/90 backdrop-blur-xs p-2 rounded-xl border border-slate-800 mb-3 text-xs text-slate-300">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setZoomLevel((prev) => Math.max(50, prev - 25))}
-                  title="Thu nhỏ"
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </button>
-                <span className="px-2 font-mono text-[11px] text-slate-400">
-                  {zoomLevel}%
-                </span>
-                <button
-                  onClick={() => setZoomLevel((prev) => Math.min(250, prev + 25))}
-                  title="Phóng to"
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setRotation((prev) => (prev + 90) % 360)}
-                  title="Xoay 90 độ"
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white ml-1"
-                >
-                  <RotateCw className="w-4 h-4" />
-                </button>
-              </div>
+              {isRawImage ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setZoomLevel((prev) => Math.max(50, prev - 25))}
+                    title="Thu nhỏ"
+                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="px-2 font-mono text-[11px] text-slate-400">
+                    {zoomLevel}%
+                  </span>
+                  <button
+                    onClick={() => setZoomLevel((prev) => Math.min(250, prev + 25))}
+                    title="Phóng to"
+                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setRotation((prev) => (prev + 90) % 360)}
+                    title="Xoay 90 độ"
+                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white ml-1"
+                  >
+                    <RotateCw className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 px-1">
+                  <File className="w-4 h-4 text-blue-400" />
+                  <span className="truncate max-w-[220px]">
+                    {currentImage?.name || (isPdf ? "Tài liệu PDF" : isDocx ? "Tài liệu DOCX" : "Tài liệu văn bản")}
+                  </span>
+                </div>
+              )}
 
-              {/* Toggle Electronic Stamp Overlay */}
+              {/* Action Buttons */}
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 text-[11px] cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={showElectronicStamp}
-                    onChange={(e) => setShowElectronicStamp(e.target.checked)}
-                    className="rounded text-blue-600 focus:ring-0 cursor-pointer"
-                  />
-                  <span>Hiện Dấu số điện tử</span>
-                </label>
+                {isRawImage && (
+                  <label className="flex items-center gap-1.5 text-[11px] cursor-pointer text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={showElectronicStamp}
+                      onChange={(e) => setShowElectronicStamp(e.target.checked)}
+                      className="rounded text-blue-600 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Hiện Dấu số điện tử</span>
+                  </label>
+                )}
 
-                <button
-                  onClick={handleDownloadImage}
-                  title="Tải ảnh gốc"
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
+                {currentImage?.dataUrl && (
+                  <button
+                    onClick={handleDownloadImage}
+                    title="Tải tệp đính kèm về máy"
+                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white flex items-center gap-1"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="text-[11px] hidden sm:inline">Tải về</span>
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Document Canvas Preview Box */}
             <div className="flex-1 overflow-auto flex items-center justify-center p-2 rounded-xl bg-slate-900/50 border border-slate-800/80 min-h-[380px] max-h-[520px] relative">
-              {currentImage ? (
+              {isPdf ? (
+                /* PDF Interactive Viewer */
+                <div className="w-full h-full min-h-[460px] flex flex-col items-center justify-center relative">
+                  {currentImage?.dataUrl ? (
+                    <iframe
+                      src={currentImage.dataUrl}
+                      title={`Xem trước tài liệu ${doc.docNumber}`}
+                      className="w-full h-full min-h-[460px] rounded-lg border border-slate-700 bg-white"
+                    />
+                  ) : doc.driveFileId ? (
+                    /* Trực tiếp nhúng bản xem trước PDF từ Google Drive qua Google Drive Viewer */
+                    <iframe
+                      src={`https://drive.google.com/file/d/${doc.driveFileId}/preview`}
+                      title={`Xem trước tài liệu ${doc.docNumber}`}
+                      className="w-full h-full min-h-[460px] rounded-lg border border-slate-700 bg-white"
+                      allow="autoplay"
+                    />
+                  ) : doc.driveWebViewLink ? (
+                    /* Nhúng qua Google Drive Preview URL */
+                    <iframe
+                      src={doc.driveWebViewLink.replace(/\/view(\?.*)?$/, "/preview")}
+                      title={`Xem trước tài liệu ${doc.docNumber}`}
+                      className="w-full h-full min-h-[460px] rounded-lg border border-slate-700 bg-white"
+                      allow="autoplay"
+                    />
+                  ) : (
+                    <div className="text-slate-400 text-xs">Không có dữ liệu xem trước tệp PDF</div>
+                  )}
+                </div>
+              ) : isDocx ? (
+                /* Word Document (.docx, .doc) Viewer Card */
+                <div className="text-center p-8 max-w-md space-y-4">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/30 shadow-inner">
+                    <FileText className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="text-white font-bold text-sm">Tài liệu Microsoft Word (.docx)</h4>
+                    <p className="text-slate-400 text-xs mt-1.5">
+                      {currentImage?.name || "Tệp văn bản Word đính kèm"}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    {doc.driveWebViewLink ? (
+                      <a
+                        href={doc.driveWebViewLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Mở Google Docs / Drive
+                      </a>
+                    ) : null}
+                    {currentImage?.dataUrl && (
+                      <button
+                        onClick={handleDownloadImage}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Tải file về máy
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : isRawImage && currentImage ? (
+                /* Standard Image Rendering with Zoom & Stamp */
                 <div
                   className="relative transition-transform duration-200 origin-center"
                   style={{
@@ -256,27 +365,84 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="text-slate-500 text-xs">Không có hình ảnh quét đính kèm</div>
+                /* Fallback: Clear Document Presentation (Tránh broken image & alt text đè tem) */
+                <div className="w-full max-w-md bg-white rounded-xl p-6 shadow-2xl border border-slate-200 text-slate-900 space-y-4 text-left">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="font-mono text-sm font-bold text-blue-600">{doc.docNumber}</div>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded">
+                      ĐÃ CẤP SỐ
+                    </span>
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-500 uppercase">Trích yếu văn bản</h5>
+                    <p className="text-sm font-semibold text-slate-800 mt-1 leading-snug">{doc.title}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-lg">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Cơ quan ban hành:</span>
+                      <span className="font-medium text-slate-800">{doc.issuingAuthority || "Nội bộ"}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Ngày văn bản:</span>
+                      <span className="font-medium text-slate-800">{doc.documentDate}</span>
+                    </div>
+                  </div>
+                  {doc.driveWebViewLink && (
+                    <div className="pt-2">
+                      <a
+                        href={doc.driveWebViewLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
+                      >
+                        <HardDrive className="w-3.5 h-3.5" />
+                        Mở xem tệp gốc trên Google Drive
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
             {/* Multi-page thumbnails footer */}
             {doc.images && doc.images.length > 1 && (
               <div className="flex items-center gap-2 pt-3 overflow-x-auto">
-                {doc.images.map((img, idx) => (
-                  <button
-                    key={img.id}
-                    onClick={() => setActiveImageIndex(idx)}
-                    className={`relative w-12 h-16 rounded overflow-hidden border-2 shrink-0 cursor-pointer ${
-                      activeImageIndex === idx ? "border-blue-500" : "border-slate-700 opacity-60"
-                    }`}
-                  >
-                    <img src={img.dataUrl} alt={`Trang ${idx + 1}`} className="w-full h-full object-cover" />
-                    <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[8px] text-center">
-                      {idx + 1}
-                    </span>
-                  </button>
-                ))}
+                {doc.images.map((img, idx) => {
+                  const thumbMime = img.mimeType?.toLowerCase() || "";
+                  const thumbName = img.name?.toLowerCase() || "";
+                  const thumbIsPdf = thumbMime.includes("pdf") || thumbName.endsWith(".pdf");
+                  const thumbIsDocx = thumbMime.includes("word") || thumbName.endsWith(".docx");
+
+                  return (
+                    <button
+                      key={img.id}
+                      onClick={() => setActiveImageIndex(idx)}
+                      className={`relative w-12 h-16 rounded overflow-hidden border-2 shrink-0 cursor-pointer flex items-center justify-center ${
+                        activeImageIndex === idx ? "border-blue-500 bg-slate-800" : "border-slate-700 bg-slate-900 opacity-60"
+                      }`}
+                    >
+                      {thumbIsPdf ? (
+                        <div className="flex flex-col items-center justify-center text-rose-400">
+                          <FileText className="w-5 h-5" />
+                          <span className="text-[7px] font-bold">PDF</span>
+                        </div>
+                      ) : thumbIsDocx ? (
+                        <div className="flex flex-col items-center justify-center text-blue-400">
+                          <FileText className="w-5 h-5" />
+                          <span className="text-[7px] font-bold">DOCX</span>
+                        </div>
+                      ) : img.dataUrl ? (
+                        <img src={img.dataUrl} alt={`Trang ${idx + 1}`} className="w-full h-full object-cover" />
+                      ) : (
+                        <FileText className="w-5 h-5 text-slate-400" />
+                      )}
+                      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[8px] text-center">
+                        {idx + 1}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -400,7 +400,13 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredDocs.map((doc) => {
             const hasImage = doc.images && doc.images.length > 0;
-            const primaryThumb = hasImage ? doc.images[0].dataUrl : null;
+            const primaryImg = hasImage ? doc.images[0] : null;
+            const primaryThumb = primaryImg?.dataUrl || null;
+            const thumbMime = primaryImg?.mimeType?.toLowerCase() || "";
+            const thumbName = primaryImg?.name?.toLowerCase() || "";
+            const isThumbPdf = thumbMime.includes("pdf") || thumbName.endsWith(".pdf") || primaryThumb?.startsWith("data:application/pdf");
+            const isThumbDocx = thumbMime.includes("word") || thumbMime.includes("officedocument") || thumbName.endsWith(".docx") || thumbName.endsWith(".doc");
+            const isThumbImage = primaryThumb && !isThumbPdf && !isThumbDocx && (primaryThumb.startsWith("data:image/") || thumbMime.startsWith("image/"));
 
             return (
               <div
@@ -411,15 +417,26 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                 {/* Card Header & Scanned Document Thumbnail Preview */}
                 <div>
                   <div className="relative aspect-16/10 bg-slate-100 overflow-hidden border-b border-slate-100">
-                    {primaryThumb ? (
+                    {isThumbImage ? (
                       <img
                         src={primaryThumb}
                         alt={doc.title}
                         className="w-full h-full object-cover object-top group-hover:scale-103 transition-transform duration-300"
                       />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-400 bg-slate-50">
+                    ) : isThumbPdf ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-rose-50/50 text-rose-500">
                         <FileText className="w-12 h-12 stroke-1" />
+                        <span className="text-[11px] font-bold mt-1 text-rose-700 bg-rose-100 px-2 py-0.5 rounded">Tệp PDF</span>
+                      </div>
+                    ) : isThumbDocx ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50/50 text-blue-500">
+                        <FileText className="w-12 h-12 stroke-1" />
+                        <span className="text-[11px] font-bold mt-1 text-blue-700 bg-blue-100 px-2 py-0.5 rounded">Tệp Word</span>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50">
+                        <FileText className="w-12 h-12 stroke-1" />
+                        <span className="text-[10px] text-slate-400 mt-1">Văn bản số hóa</span>
                       </div>
                     )}
 

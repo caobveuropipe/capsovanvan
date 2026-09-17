@@ -316,18 +316,36 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                   </div>
                 </div>
 
-                {/* Scanned Image Rendering */}
+                {/* Scanned Image / Document Rendering */}
                 {primaryImage ? (
-                  <div className="border border-slate-300 rounded-lg overflow-hidden shadow-sm flex justify-center bg-white p-2">
-                    <img
-                      src={primaryImage.dataUrl}
-                      alt={doc.title}
-                      className="w-full h-auto object-contain max-h-[850px]"
-                    />
-                  </div>
+                  primaryImage.mimeType?.includes("pdf") || primaryImage.name?.endsWith(".pdf") || primaryImage.dataUrl.startsWith("data:application/pdf") ? (
+                    <div className="border border-slate-300 rounded-lg overflow-hidden shadow-sm bg-white p-2">
+                      <iframe
+                        src={primaryImage.dataUrl}
+                        title={`Bản in ${doc.docNumber}`}
+                        className="w-full h-[800px] border-0 rounded"
+                      />
+                    </div>
+                  ) : primaryImage.mimeType?.startsWith("image/") || primaryImage.dataUrl.startsWith("data:image/") ? (
+                    <div className="border border-slate-300 rounded-lg overflow-hidden shadow-sm flex justify-center bg-white p-2">
+                      <img
+                        src={primaryImage.dataUrl}
+                        alt={doc.title}
+                        className="w-full h-auto object-contain max-h-[850px]"
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-600 bg-slate-50 border border-slate-200 rounded-lg font-sans text-sm">
+                      <FileText className="w-10 h-10 text-blue-600 mx-auto mb-2" />
+                      <div className="font-bold text-slate-800">{primaryImage.name || "Tệp tài liệu văn bản đính kèm"}</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Khuyến nghị: Chuyển sang chế độ <b>"Mẫu Phiếu Tiếp Nhận (Khuyên dùng)"</b> ở thanh công cụ phía trên để in phiếu trình văn bản chuẩn quy định.
+                      </div>
+                    </div>
+                  )
                 ) : (
                   <div className="p-12 text-center text-slate-400 font-sans text-sm">
-                    Không có hình ảnh quét đính kèm
+                    Không có tệp quét đính kèm
                   </div>
                 )}
 

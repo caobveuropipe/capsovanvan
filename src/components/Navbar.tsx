@@ -20,6 +20,7 @@ interface NavbarProps {
   onOpenGoogleDrive?: () => void;
   onSyncDrive?: () => void;
   isDriveConnected?: boolean;
+  isDriveTokenExpired?: boolean;
   isSyncing?: boolean;
   totalDocsCount: number;
 }
@@ -32,6 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenGoogleDrive,
   onSyncDrive,
   isDriveConnected = false,
+  isDriveTokenExpired = false,
   isSyncing = false,
   totalDocsCount,
 }) => {
@@ -100,21 +102,36 @@ export const Navbar: React.FC<NavbarProps> = ({
                   onClick={onOpenGoogleDrive}
                   className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs sm:text-sm font-medium transition-colors cursor-pointer shadow-sm min-h-[38px] ${
                     isDriveConnected
-                      ? "bg-emerald-950/40 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/40"
+                      ? isDriveTokenExpired
+                        ? "bg-amber-950/40 text-amber-300 border-amber-600/60 hover:bg-amber-900/40"
+                        : "bg-emerald-950/40 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/40"
                       : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-slate-600"
                   }`}
-                  title="Lưu trữ văn bản trên Google Drive cá nhân (BYOS)"
+                  title={
+                    isDriveTokenExpired
+                      ? "Phiên kết nối Google Drive đã hết hạn - Bấm để gia hạn"
+                      : "Lưu trữ văn bản trên Google Drive cá nhân (BYOS)"
+                  }
                 >
                   <div
                     className={`w-2 h-2 rounded-full ${
-                      isDriveConnected ? "bg-emerald-400 animate-pulse" : "bg-slate-500"
+                      isDriveConnected
+                        ? isDriveTokenExpired
+                          ? "bg-amber-400 animate-ping"
+                          : "bg-emerald-400 animate-pulse"
+                        : "bg-slate-500"
                     }`}
                   />
                   <span>Google Drive</span>
+                  {isDriveTokenExpired && (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30">
+                      Hết hạn
+                    </span>
+                  )}
                 </button>
 
-                {/* Direct Sync Button if Connected */}
-                {isDriveConnected && onSyncDrive && (
+                {/* Direct Sync Button if Connected (and token not expired) */}
+                {isDriveConnected && !isDriveTokenExpired && onSyncDrive && (
                   <button
                     id="btn-sync-google-drive"
                     onClick={onSyncDrive}

@@ -35,6 +35,7 @@ import {
   saveDatabaseToGoogleDrive,
   DRIVE_DB_FILENAME,
   DriveDatabasePayload,
+  isDriveTokenExpired,
 } from "./services/googleDriveService";
 
 export default function App() {
@@ -75,6 +76,14 @@ export default function App() {
       return;
     }
 
+    // Nếu token đã hết hạn, không gửi request nền để tránh báo lỗi đỏ 401 trên console
+    if (isDriveTokenExpired(currentConfig)) {
+      if (isManual) {
+        showToast("Phiên đăng nhập Google Drive đã hết hạn. Hãy bấm vào icon Drive để gia hạn phiên.", "error");
+      }
+      return;
+    }
+
     setIsDriveSyncing(true);
     try {
       // 1. Check if database file exists on Google Drive
@@ -101,7 +110,24 @@ export default function App() {
           // Merge / Save documents into local IndexedDB
           if (Array.isArray(remoteData.documents)) {
             for (const rDoc of remoteData.documents) {
-              await saveDocument(rDoc);
+              const existingLocalDoc = await getDocumentById(rDoc.id);
+              if (existingLocalDoc && existingLocalDoc.images && existingLocalDoc.images.length > 0) {
+                // Giữ lại dataUrl gốc ở local IndexedDB nếu remote đã được bóc tách base64
+                const mergedImages = rDoc.images?.map((remImg: any, idx: number) => {
+                  const locImg = existingLocalDoc.images[idx];
+                  return {
+                    ...remImg,
+                    dataUrl: remImg.dataUrl || locImg?.dataUrl || "",
+                  };
+                }) || existingLocalDoc.images;
+
+                await saveDocument({
+                  ...rDoc,
+                  images: mergedImages,
+                });
+              } else {
+                await saveDocument(rDoc);
+              }
             }
             const refreshedDocs = await getAllDocuments();
             setDocuments(refreshedDocs);
@@ -132,9 +158,19 @@ export default function App() {
         }
       }
     } catch (syncErr: any) {
-      console.warn("Lỗi đồng bộ cơ sở dữ liệu Google Drive:", syncErr);
-      if (isManual) {
-        showToast(`Chưa thể đồng bộ Google Drive: ${syncErr.message || "Lỗi kết nối"}`, "error");
+      const errMsg = syncErr.message || "";
+      if (errMsg.includes("invalid authentication") || errMsg.includes("401") || errMsg.includes("Invalid Credentials")) {
+        // Token đã hết hạn trên server Google
+        const updatedConfig = { ...currentConfig, tokenExpiresAt: Date.now() - 1000 };
+        saveGoogleDriveConfig(updatedConfig);
+        if (isManual) {
+          showToast("Phiên đăng nhập Google Drive đã hết hạn. Hãy bấm vào icon Drive để gia hạn phiên.", "error");
+        }
+      } else {
+        console.warn("Lỗi đồng bộ cơ sở dữ liệu Google Drive:", syncErr);
+        if (isManual) {
+          showToast(`Chưa thể đồng bộ Google Drive: ${errMsg || "Lỗi kết nối"}`, "error");
+        }
       }
     } finally {
       setIsDriveSyncing(false);
@@ -144,7 +180,7 @@ export default function App() {
   // Push local DB to Google Drive
   const pushLocalDbToDrive = async (updatedCats: DocumentCategory[], updatedDocs: DocumentRecord[]) => {
     const currentConfig = getGoogleDriveConfig();
-    if (!currentConfig.accessToken) return;
+    if (!currentConfig.accessToken || isDriveTokenExpired(currentConfig)) return;
 
     try {
       const payload: DriveDatabasePayload = {
@@ -155,8 +191,14 @@ export default function App() {
         documents: updatedDocs,
       };
       await saveDatabaseToGoogleDrive(currentConfig.accessToken, currentConfig.folderId, payload);
-    } catch (err) {
-      console.warn("Lỗi cập nhật database lên Google Drive:", err);
+    } catch (err: any) {
+      const errMsg = err.message || "";
+      if (errMsg.includes("invalid authentication") || errMsg.includes("401") || errMsg.includes("Invalid Credentials")) {
+        const updatedConfig = { ...currentConfig, tokenExpiresAt: Date.now() - 1000 };
+        saveGoogleDriveConfig(updatedConfig);
+      } else {
+        console.warn("Lỗi cập nhật database lên Google Drive:", err);
+      }
     }
   };
 
@@ -204,44 +246,53 @@ export default function App() {
       docToSave.images &&
       docToSave.images.length > 0
     ) {
-      showToast("Đang đồng bộ bản scan lên Google Drive...", "info");
-      try {
-        const primaryImg = docToSave.images[0];
-        // Lấy đúng phần mở rộng gốc của tệp (ví dụ .pdf, .docx, .png, .jpg...)
-        let ext = "pdf";
-        if (primaryImg.name && primaryImg.name.includes(".")) {
-          ext = primaryImg.name.split(".").pop()?.toLowerCase() || "pdf";
-        } else if (primaryImg.mimeType) {
-          if (primaryImg.mimeType.includes("pdf")) ext = "pdf";
-          else if (primaryImg.mimeType.includes("png")) ext = "png";
-          else if (primaryImg.mimeType.includes("jpeg") || primaryImg.mimeType.includes("jpg")) ext = "jpg";
+      if (isDriveTokenExpired(currentDriveConfig)) {
+        showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm vào icon Drive ở góc trên để gia hạn phiên.", "error");
+      } else {
+        showToast("Đang đồng bộ bản scan lên Google Drive...", "info");
+        try {
+          const primaryImg = docToSave.images[0];
+          // Lấy đúng phần mở rộng gốc của tệp (ví dụ .pdf, .docx, .png, .jpg...)
+          let ext = "pdf";
+          if (primaryImg.name && primaryImg.name.includes(".")) {
+            ext = primaryImg.name.split(".").pop()?.toLowerCase() || "pdf";
+          } else if (primaryImg.mimeType) {
+            if (primaryImg.mimeType.includes("pdf")) ext = "pdf";
+            else if (primaryImg.mimeType.includes("png")) ext = "png";
+            else if (primaryImg.mimeType.includes("jpeg") || primaryImg.mimeType.includes("jpg")) ext = "jpg";
+          }
+
+          const safeTitle = docToSave.title.replace(/[\/\\:?*"<>|]/g, "_").slice(0, 40).trim();
+          const cleanDocName = `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}.${ext}`;
+          const driveResult = await uploadFileToGoogleDrive(
+            currentDriveConfig.accessToken,
+            currentDriveConfig.folderId,
+            cleanDocName,
+            primaryImg.dataUrl,
+            `Văn bản số ${docToSave.docNumber}: ${docToSave.title}`
+          );
+
+          docToSave.driveFileId = driveResult.id;
+          docToSave.driveWebViewLink = driveResult.webViewLink;
+          docToSave.driveThumbnailLink = driveResult.thumbnailLink;
+          docToSave.history.push({
+            id: `h-drive-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            action: "ĐỒNG BỘ GOOGLE DRIVE",
+            user: currentDriveConfig.userEmail || "Google Drive Sync",
+            details: `Đã lưu bản scan lên thư mục Google Drive: [${driveResult.name}]`,
+          });
+
+          showToast(`Đã lưu bản scan lên Google Drive thành công! (${driveResult.name})`, "success");
+        } catch (driveErr: any) {
+          console.warn("Không thể tải tệp lên Google Drive:", driveErr);
+          const errMsg = driveErr.message || "";
+          if (errMsg.includes("invalid authentication") || errMsg.includes("401") || errMsg.includes("Invalid Credentials")) {
+            showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm vào icon Drive ở góc trên để gia hạn phiên.", "error");
+          } else {
+            showToast(`Chưa thể tải lên Google Drive: ${errMsg || "Lỗi kết nối"}`, "error");
+          }
         }
-
-        const safeTitle = docToSave.title.replace(/[\/\\:?*"<>|]/g, "_").slice(0, 40).trim();
-        const cleanDocName = `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}.${ext}`;
-        const driveResult = await uploadFileToGoogleDrive(
-          currentDriveConfig.accessToken,
-          currentDriveConfig.folderId,
-          cleanDocName,
-          primaryImg.dataUrl,
-          `Văn bản số ${docToSave.docNumber}: ${docToSave.title}`
-        );
-
-        docToSave.driveFileId = driveResult.id;
-        docToSave.driveWebViewLink = driveResult.webViewLink;
-        docToSave.driveThumbnailLink = driveResult.thumbnailLink;
-        docToSave.history.push({
-          id: `h-drive-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          action: "ĐỒNG BỘ GOOGLE DRIVE",
-          user: currentDriveConfig.userEmail || "Google Drive Sync",
-          details: `Đã lưu bản scan lên thư mục Google Drive: [${driveResult.name}]`,
-        });
-
-        showToast(`Đã lưu bản scan lên Google Drive thành công! (${driveResult.name})`, "success");
-      } catch (driveErr: any) {
-        console.warn("Không thể tải tệp lên Google Drive:", driveErr);
-        showToast(`Chưa thể tải lên Google Drive: ${driveErr.message || "Lỗi kết nối"}`, "error");
       }
     } else if (!currentDriveConfig.accessToken) {
       showToast("Đã lưu cục bộ. Hãy kết nối Google Drive nếu muốn dùng chung dữ liệu nhiều máy.", "info");
@@ -294,6 +345,7 @@ export default function App() {
         onOpenGoogleDrive={() => setIsGoogleDriveOpen(true)}
         onSyncDrive={() => syncWithGoogleDrive(true)}
         isDriveConnected={!!driveConfig.userEmail}
+        isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
         isSyncing={isDriveSyncing}
         totalDocsCount={documents.length}
       />

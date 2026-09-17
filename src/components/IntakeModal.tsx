@@ -3,7 +3,6 @@ import {
   X,
   Upload,
   Camera,
-  Mail,
   Sparkles,
   CheckCircle2,
   AlertCircle,
@@ -14,9 +13,7 @@ import {
   Building,
   UserCheck,
   Calendar,
-  Paperclip,
   Trash2,
-  Plus,
   FileCheck,
   ArrowLeft,
   ArrowRight,
@@ -28,8 +25,6 @@ import {
   UrgencyLevel,
   SecrecyLevel,
   DocumentImage,
-  EmailAttachment,
-  EmailMetadata,
 } from "../types";
 import {
   generateDocumentNumber,
@@ -78,14 +73,9 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   const [images, setImages] = useState<DocumentImage[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
 
-  // Email intake state
-  const [emailText, setEmailText] = useState<string>("");
-  const [emailAttachments, setEmailAttachments] = useState<EmailAttachment[]>([]);
-  const [emailMeta, setEmailMeta] = useState<EmailMetadata | null>(null);
-  const [extractedFromAttachmentName, setExtractedFromAttachmentName] = useState<string>("");
-
   // AI OCR status
   const [isOcrProcessing, setIsOcrProcessing] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
   const [ocrError, setOcrError] = useState<string>("");
   const [ocrSuccessNote, setOcrSuccessNote] = useState<string>("");
@@ -99,7 +89,10 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("environment");
   const [cameraError, setCameraError] = useState<string>("");
 
-  // Reset or setup when opened
+  // File input ref for clearing native file selector
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Reset or setup when opened/closed
   useEffect(() => {
     if (isOpen) {
       setSuccessDoc(null);
@@ -111,6 +104,17 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       }
     } else {
       stopCamera();
+      // Clear all intake files & input state when modal closes
+      setTitle("");
+      setSummary("");
+      setOcrFullText("");
+      setImages([]);
+      setCustomDocNumberOverride("");
+      setSuccessDoc(null);
+      setMobileStep(1);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   }, [isOpen, categories]);
 
@@ -231,46 +235,6 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       reader.readAsDataURL(file);
     });
   };
-
-  // Handle upload attachment for email
-  const handleEmailAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const fileList: File[] = Array.from(files);
-    fileList.forEach((file: File, index: number) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        const newAttachment: EmailAttachment = {
-          id: `att-${Date.now()}-${index}`,
-          filename: file.name,
-          mimeType: file.type || "application/pdf",
-          size: file.size,
-          dataUrl,
-          isMainDocument: emailAttachments.length === 0,
-        };
-
-        setEmailAttachments((prev) => [...prev, newAttachment]);
-
-        // Also add to images for preview and OCR
-        const newImg: DocumentImage = {
-          id: `img-att-${Date.now()}-${index}`,
-          name: file.name,
-          dataUrl,
-          mimeType: file.type || "image/jpeg",
-          size: file.size,
-          capturedAt: new Date().toISOString(),
-          pageNumber: images.length + 1,
-        };
-
-        setImages((prev) => [...prev, newImg]);
-        setSelectedImageIndex(0);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
   // Load sample test document for Upload tab
   const loadSampleDocument = (type: "QD" | "CV" | "HD" | "TTR") => {
     const now = new Date();
@@ -395,257 +359,9 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       setIsOcrProcessing(false);
     }
   };
-
-  // Parse Email & Extract Attached Document Content
-  const handleParseEmail = async () => {
-    if (!emailText.trim() && emailAttachments.length === 0) {
-      alert("Vui lòng dán nội dung thư điện tử hoặc chọn tệp đính kèm cần trích xuất.");
-      return;
-    }
-
-    setIsOcrProcessing(true);
-    setOcrError("");
-    setOcrConfidence(null);
-    setOcrSuccessNote("");
-
-    try {
-      const mainAttachment = emailAttachments.find((a) => a.isMainDocument) || emailAttachments[0];
-
-      const payload: any = {
-        emailRawText: emailText,
-        categories: categories.map((c) => ({ code: c.code, name: c.name })),
-      };
-
-      if (mainAttachment) {
-        payload.attachmentBase64 = mainAttachment.dataUrl;
-        payload.attachmentFilename = mainAttachment.filename;
-        payload.attachmentMimeType = mainAttachment.mimeType;
-        if (mainAttachment.extractedText) {
-          payload.attachmentText = mainAttachment.extractedText;
-        }
-      }
-
-      const res = await fetch("/api/parse-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json();
-      if (!json.success || !json.data) {
-        throw new Error(json.error || "Không thể phân tích email và tệp đính kèm.");
-      }
-
-      const d = json.data;
-
-      // Match category
-      if (d.categoryCode) {
-        const found = categories.find(
-          (c) =>
-            c.code.toUpperCase() === d.categoryCode.toUpperCase() ||
-            c.name.toLowerCase().includes(d.categoryName?.toLowerCase() || "")
-        );
-        if (found) {
-          setSelectedCategoryId(found.id);
-        }
-      }
-
-      if (d.title) setTitle(d.title);
-      if (d.issuingAuthority) setIssuingAuthority(d.issuingAuthority);
-      if (d.recipient) setRecipient(d.recipient);
-      if (d.signer) setSigner(d.signer);
-      if (d.documentDate) setDocumentDate(d.documentDate);
-      if (d.departmentCode) setDepartmentCode(d.departmentCode);
-      if (d.summary) setSummary(d.summary);
-      if (d.ocrFullText) setOcrFullText(d.ocrFullText);
-      if (d.urgency) setUrgency(d.urgency as UrgencyLevel);
-      if (d.secrecy) setSecrecy(d.secrecy as SecrecyLevel);
-      if (d.keywords && Array.isArray(d.keywords)) setKeywords(d.keywords);
-      if (d.confidence !== undefined) setOcrConfidence(Math.round(d.confidence * 100));
-
-      const updatedMeta: EmailMetadata = {
-        senderEmail: d.senderEmail || "vanthu@partner.vn",
-        senderName: d.senderName || "Đối tác cơ quan ban hành",
-        subject: d.subject || "Văn bản gửi qua thư điện tử",
-        receivedDate: d.receivedDate || new Date().toLocaleString("vi-VN"),
-        rawBody: emailText,
-        attachments: emailAttachments,
-      };
-      setEmailMeta(updatedMeta);
-
-      if (mainAttachment) {
-        setExtractedFromAttachmentName(mainAttachment.filename);
-        setOcrSuccessNote(`Đã bóc tách & trích xuất thành công văn bản trong file đính kèm: "${mainAttachment.filename}"`);
-      } else {
-        setOcrSuccessNote("Đã trích xuất thông tin thành công từ nội dung thư điện tử!");
-      }
-
-      // Ensure document has an image loaded from the attachment
-      if (images.length === 0 && mainAttachment?.dataUrl) {
-        setImages([
-          {
-            id: `img-from-att-${Date.now()}`,
-            name: mainAttachment.filename,
-            dataUrl: mainAttachment.dataUrl,
-            mimeType: mainAttachment.mimeType,
-            size: mainAttachment.size,
-            capturedAt: new Date().toISOString(),
-            pageNumber: 1,
-          },
-        ]);
-        setSelectedImageIndex(0);
-      }
-    } catch (err: any) {
-      console.error("Email parse error:", err);
-      setOcrError(err.message || "Lỗi khi trích xuất văn bản từ tệp đính kèm email.");
-    } finally {
-      setIsOcrProcessing(false);
-    }
-  };
-
-  // Sample incoming emails with realistic attached document files
-  const loadSampleEmailWithAttachment = (sampleKey: "CV_BO" | "TTR_TCKT" | "HD_CLOUD" | "QD_NHAN_SU") => {
-    const now = new Date();
-    const dateFormatted = `${now.getDate().toString().padStart(2, "0")}/${(now.getMonth() + 1).toString().padStart(2, "0")}/${now.getFullYear()}`;
-
-    let emailBody = "";
-    let attFilename = "";
-    let attSize = 185000;
-    let docTitle = "";
-    let docCatCode = "CV";
-    let docAuthority = "";
-    let docSigner = "";
-    let docDept = "VP";
-    let extractedText = "";
-
-    if (sampleKey === "CV_BO") {
-      emailBody = `From: vanthu@mic.gov.vn (Bộ Thông tin và Truyền thông)
-Subject: V/v Hướng dẫn báo cáo tuân thủ an toàn thông tin mạng và định danh điện tử quý 3/2026
-Date: 26/08/2026 09:15:00
-To: vanthu@vccorp.vn
-Attachments: CongVan_HuongDan_942_BTTTT.pdf (185 KB)
-
-Kính gửi: Công ty Cổ phần VCCORP,
-Thực hiện chỉ đạo của Lãnh đạo Bộ TTTT về việc tăng cường bảo đảm an toàn dữ liệu số hóa;
-Văn phòng Bộ gửi kèm theo Công văn số 942/BTTTT-ATTT để Quý Đơn vị nghiên cứu và thực hiện báo cáo.
-Chi tiết nội dung chỉ đạo, kính đề nghị Quý cơ quan xem trực tiếp trong tệp đính kèm CongVan_HuongDan_942_BTTTT.pdf.
-Trân trọng cảm ơn.
-Chánh Văn phòng Bộ TTTT - Đỗ Minh Cường`;
-      attFilename = "CongVan_HuongDan_942_BTTTT.pdf";
-      attSize = 189400;
-      docTitle = "Công văn hướng dẫn báo cáo tuân thủ an toàn thông tin mạng và định danh điện tử quý 3/2026";
-      docCatCode = "CV";
-      docAuthority = "BỘ THÔNG TIN VÀ TRUYỀN THÔNG - VĂN PHÒNG BỘ";
-      docSigner = "Đỗ Minh Cường - Chánh Văn phòng";
-      docDept = "VP";
-      extractedText = `BỘ THÔNG TIN VÀ TRUYỀN THÔNG\nSố: 942/BTTTT-ATTT\nHà Nội, ngày 26 tháng 08 năm 2026\nCÔNG VĂN\nV/v Hướng dẫn báo cáo tuân thủ an toàn thông tin mạng và định danh điện tử quý 3/2026\nKính gửi: Các Tập đoàn, Doanh nghiệp Công nghệ Thông tin\nCăn cứ Luật An toàn thông tin mạng...\nBộ Thông tin và Truyền thông hướng dẫn các đơn vị thực hiện báo cáo...\nChánh Văn phòng: Đỗ Minh Cường (Đã ký & đóng dấu đỏ)`;
-    } else if (sampleKey === "TTR_TCKT") {
-      emailBody = `From: ketoan@vccorp.vn (Phòng Tài chính - Kế toán)
-Subject: [Kính trình Ban Giám đốc] Tờ trình phê duyệt dự toán kinh phí bản quyền AI OCR và máy quét số hóa
-Date: 26/08/2026 10:30:00
-To: bangiamdoc@vccorp.vn, vanthu@vccorp.vn
-Attachments: ToTrinh_08_PheDuyet_DuToan_KinhPhi.pdf (240 KB)
-
-Kính gửi: Ban Tổng Giám đốc Công ty CP VCCORP,
-Phòng Tài chính - Kế toán kính trình Ban Giám đốc tờ trình đính kèm ToTrinh_08_PheDuyet_DuToan_KinhPhi.pdf về việc phê duyệt ngân sách mua sắm trang thiết bị và phần mềm cấp số AI văn bản.
-Toàn bộ dự toán chi tiết và bảng báo giá 3 nhà thầu đã được đính kèm trong tệp văn bản.
-Kính mong Ban Giám đốc phê duyệt để phòng triển khai ký hợp đồng.
-Trưởng phòng TCKT: Lê Mai Lan`;
-      attFilename = "ToTrinh_08_PheDuyet_DuToan_KinhPhi.pdf";
-      attSize = 245000;
-      docTitle = "Tờ trình về việc phê duyệt dự toán kinh phí bản quyền AI OCR và trang thiết bị số hóa năm 2026";
-      docCatCode = "TTr";
-      docAuthority = "CÔNG TY CP VCCORP - PHÒNG TÀI CHÍNH KẾ TOÁN";
-      docSigner = "Lê Mai Lan - Trưởng phòng TCKT";
-      docDept = "TCKT";
-      extractedText = `CÔNG TY CỔ PHẦN VCCORP\nPHÒNG TÀI CHÍNH - KẾ TOÁN\nSố: 08/TTr-TCKT\nTỜ TRÌNH\nV/v Phê duyệt dự toán kinh phí bản quyền AI OCR và thiết bị số hóa năm 2026\nKính gửi: Ban Tổng Giám đốc Công ty\nTổng ngân sách đề xuất: 185.000.000 VNĐ.\nTrưởng phòng Kế toán: Lê Mai Lan (Đã ký)`;
-    } else if (sampleKey === "HD_CLOUD") {
-      emailBody = `From: legal@google-cloud-partner.vn (Bộ phận Hợp đồng & Pháp chế Đối tác)
-Subject: [Bản scan có dấu] Hợp đồng nguyên tắc cung cấp giải pháp máy chủ Cloud & AI OCR số HĐ-057/2026/VCC
-Date: 26/08/2026 14:00:00
-To: vanthu@vccorp.vn, phapche@vccorp.vn
-Attachments: HopDong_KinhTe_057_Signed_Scan.pdf (412 KB)
-
-Kính gửi Văn phòng VCCORP,
-Chúng tôi xin gửi bản scan Hợp đồng kinh tế số HĐ-057/2026/VCC đã được 2 bên ký kết hoàn tất và đóng dấu pháp nhân.
-Đề nghị quý công ty vào sổ đăng ký văn bản và lưu trữ bản điện tử theo quy định.
-Tệp đính kèm: HopDong_KinhTe_057_Signed_Scan.pdf
-Trân trọng,
-Phạm Minh Đức - Giám đốc Pháp chế Đối tác`;
-      attFilename = "HopDong_KinhTe_057_Signed_Scan.pdf";
-      attSize = 422000;
-      docTitle = "Hợp đồng kinh tế về việc cung cấp dịch vụ hạ tầng Cloud & Trí tuệ nhân tạo nhận diện OCR văn bản";
-      docCatCode = "HĐ";
-      docAuthority = "Công ty Cổ phần VCCORP & Đối tác Công nghệ Cloud AI";
-      docSigner = "Phạm Quốc Dũng - Giám đốc Kinh doanh";
-      docDept = "KD";
-      extractedText = `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\nHỢP ĐỒNG KINH TẾ\nSố: HĐ-057/2026/VCC\nVề việc: Cung cấp giải pháp lưu trữ đám mây và AI OCR\nĐại diện Bên A: VCCORP\nĐại diện Bên B: Đối tác Cloud\nĐã ký kết và đóng dấu đỏ hai bên.`;
-    } else {
-      emailBody = `From: bgd@vccorp.vn (Văn phòng Ban Giám đốc)
-Subject: [Ban hành Quyết định] Quyết định điều chỉnh bổ nhiệm nhân sự và phân quyền số hóa
-Date: 26/08/2026 15:30:00
-To: vanthu@vccorp.vn, all-staff@vccorp.vn
-Attachments: QuyetDinh_DieuChinh_NhanSu_2026.pdf (160 KB)
-
-Gửi Bộ phận Văn thư Lưu trữ,
-Tổng Giám đốc đã ký ban hành Quyết định về việc kiện toàn nhân sự Ban Quản lý văn bản điện tử.
-Văn phòng gửi tệp đính kèm QuyetDinh_DieuChinh_NhanSu_2026.pdf để vào sổ cấp số chính thức và lưu trữ điện tử.
-Người gửi: Chánh Văn phòng Lê Hoàng Long`;
-      attFilename = "QuyetDinh_DieuChinh_NhanSu_2026.pdf";
-      attSize = 164000;
-      docTitle = "Quyết định về việc kiện toàn nhân sự và phân quyền quản lý tiếp nhận văn bản số hóa";
-      docCatCode = "QĐ";
-      docAuthority = "CÔNG TY CỔ PHẦN VCCORP";
-      docSigner = "Nguyễn Văn An - Tổng Giám đốc";
-      docDept = "VP";
-      extractedText = `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nQUYẾT ĐỊNH\nVề việc kiện toàn nhân sự và phân quyền tiếp nhận văn bản tự động\nTỔNG GIÁM ĐỐC CÔNG TY CP VCCORP\nĐiều 1. Phân quyền tiếp nhận và cấp số tự động cho Văn thư.\nĐiều 2. Quyết định có hiệu lực kể từ ngày ký.\nTổng Giám đốc: Nguyễn Văn An (Đã ký)`;
-    }
-
-    const matchedCat = categories.find((c) => c.code.toUpperCase() === docCatCode.toUpperCase()) || categories[0];
-    const previewNum = generateDocumentNumber(matchedCat, matchedCat.currentCount + 1, docDept);
-    const sampleScanImg = createSampleDocumentImage(previewNum, docTitle, matchedCat.name, dateFormatted);
-
-    setEmailText(emailBody);
-
-    const newAttachment: EmailAttachment = {
-      id: `att-sample-${Date.now()}`,
-      filename: attFilename,
-      mimeType: "application/pdf",
-      size: attSize,
-      dataUrl: sampleScanImg,
-      extractedText,
-      isMainDocument: true,
-    };
-
-    setEmailAttachments([newAttachment]);
-    setExtractedFromAttachmentName(attFilename);
-
-    const sampleImg: DocumentImage = {
-      id: `img-att-${Date.now()}`,
-      name: attFilename,
-      dataUrl: sampleScanImg,
-      mimeType: "image/svg+xml",
-      size: attSize,
-      capturedAt: new Date().toISOString(),
-      pageNumber: 1,
-    };
-
-    setImages([sampleImg]);
-    setSelectedImageIndex(0);
-
-    setSelectedCategoryId(matchedCat.id);
-    setTitle(docTitle);
-    setIssuingAuthority(docAuthority);
-    setSigner(docSigner);
-    setDepartmentCode(docDept);
-    setSummary(`Văn bản được trích xuất từ tệp đính kèm [${attFilename}] trong email: ${docTitle}.`);
-    setOcrFullText(`[VĂN BẢN TRÍCH XUẤT TỪ FILE ĐÍNH KÈM: ${attFilename}]\n${extractedText}`);
-    setOcrConfidence(98);
-    setOcrSuccessNote(`Đã tự động đính kèm và trích xuất tài liệu: "${attFilename}"`);
-  };
-
-  // Final Action: Issue Number & Save to Archive
   const handleIssueNumberAndSave = () => {
+    if (isSubmitting) return;
+
     if (!title.trim()) {
       alert("Vui lòng nhập Trích yếu / Tiêu đề văn bản.");
       return;
@@ -680,18 +396,6 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
     const nowIso = new Date().toISOString();
     const verificationCode = generateVerificationCode(finalDocNumber, selectedCategory.code);
 
-    const finalEmailMetadata: EmailMetadata | undefined =
-      activeSource === "EMAIL"
-        ? {
-            senderEmail: emailMeta?.senderEmail || "vanthu@partner.vn",
-            senderName: emailMeta?.senderName || issuingAuthority || "Cơ quan gửi qua Email",
-            subject: emailMeta?.subject || title,
-            receivedDate: emailMeta?.receivedDate || nowIso,
-            rawBody: emailText,
-            attachments: emailAttachments,
-          }
-        : undefined;
-
     const newDoc: DocumentRecord = {
       id: `doc-${Date.now()}`,
       docNumber: finalDocNumber,
@@ -714,27 +418,45 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
       ocrFullText: ocrFullText || title,
       keywords: keywords.length > 0 ? keywords : [selectedCategory.name, departmentCode],
       images: finalImages,
-      emailMetadata: finalEmailMetadata,
       verificationCode,
       createdBy: "Chuyên viên Văn thư điện tử",
-      notes: notes.trim() || (extractedFromAttachmentName ? `Trích xuất từ tệp đính kèm: ${extractedFromAttachmentName}` : ""),
+      notes: notes.trim(),
       history: [
         {
           id: `h-${Date.now()}`,
           timestamp: nowIso,
           action: `TIẾP NHẬN (${activeSource}) & CẤP SỐ`,
           user: "Hệ thống Cấp số Tự động",
-          details: `Đã cấp số chính thức [${finalDocNumber}] theo quy tắc danh mục ${selectedCategory.name}.${
-            extractedFromAttachmentName ? ` Nguồn: File đính kèm [${extractedFromAttachmentName}].` : ""
-          }`,
+          details: `Đã cấp số chính thức [${finalDocNumber}] theo quy tắc danh mục ${selectedCategory.name}.`,
         },
       ],
       createdAt: nowIso,
       updatedAt: nowIso,
     };
 
-    onDocumentCreated(newDoc);
-    setSuccessDoc(newDoc);
+    setIsSubmitting(true);
+    try {
+      onDocumentCreated(newDoc);
+      setSuccessDoc(newDoc);
+
+      // NGAY LẬP TỨC CLEAR TOÀN BỘ FILE VÀ FORM VỪA TẢI
+      // Để triệt để ngăn chặn việc lưu lần 2 cho cùng 1 file vừa cấp số
+      setTitle("");
+      setSummary("");
+      setOcrFullText("");
+      setImages([]);
+      setCustomDocNumberOverride("");
+      setOcrConfidence(null);
+      setOcrError("");
+      setOcrSuccessNote("");
+      setSelectedImageIndex(0);
+      setMobileStep(1);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleResetForNext = () => {
@@ -744,14 +466,13 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
     setSummary("");
     setOcrFullText("");
     setImages([]);
-    setEmailText("");
-    setEmailAttachments([]);
-    setEmailMeta(null);
-    setExtractedFromAttachmentName("");
     setCustomDocNumberOverride("");
     setOcrConfidence(null);
     setOcrError("");
     setOcrSuccessNote("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   if (!isOpen) return null;
@@ -892,8 +613,8 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
             {/* Left Column: 3 Intake Methods + Visual Scanner (5 cols) */}
             <div className={`lg:col-span-5 bg-slate-50 border-r border-slate-200 p-3.5 sm:p-4 overflow-y-auto ${mobileStep === 1 ? "flex flex-col justify-between" : "hidden lg:flex lg:flex-col lg:justify-between"}`}>
               <div>
-                {/* 3 Intake Source Selector Tabs */}
-                <div className="grid grid-cols-3 gap-1 bg-slate-200/80 p-1 rounded-xl mb-3 sm:mb-4 border border-slate-300/60">
+                {/* 2 Intake Source Selector Tabs */}
+                <div className="grid grid-cols-2 gap-1 bg-slate-200/80 p-1 rounded-xl mb-3 sm:mb-4 border border-slate-300/60">
                   <button
                     id="tab-intake-upload"
                     type="button"
@@ -927,23 +648,6 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                     <Camera className="w-3.5 h-3.5" />
                     <span>Chụp ảnh</span>
                   </button>
-
-                  <button
-                    id="tab-intake-email"
-                    type="button"
-                    onClick={() => {
-                      stopCamera();
-                      setActiveSource("EMAIL");
-                    }}
-                    className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      activeSource === "EMAIL"
-                        ? "bg-white text-blue-700 shadow-sm"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    <span>Từ Email (Đính kèm)</span>
-                  </button>
                 </div>
 
                 {/* Sub-view: 1. UPLOAD */}
@@ -963,11 +667,16 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                         Hỗ trợ PNG, JPG, WEBP, PDF (Tải lên nhiều trang)
                       </span>
                       <input
+                        ref={fileInputRef}
                         id="file-upload-input"
                         type="file"
                         accept="image/*,application/pdf"
                         multiple
-                        onChange={handleFileUpload}
+                        onChange={(e) => {
+                          handleFileUpload(e);
+                          // Reset input value so re-selecting same file triggers onChange
+                          e.target.value = "";
+                        }}
                         className="hidden"
                       />
                     </label>
@@ -1077,280 +786,7 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                   </div>
                 )}
 
-                {/* Sub-view: 3. EMAIL WITH ATTACHMENTS */}
-                {activeSource === "EMAIL" && (
-                  <div className="space-y-3">
-                    {/* Notice & Mode Switcher */}
-                    <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-2.5 text-xs text-indigo-950 flex items-start gap-2">
-                      <Mail className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <div>
-                        <strong className="block text-indigo-900 font-bold">Hộp thư tiếp nhận văn bản điện tử:</strong>
-                        <span>Chọn một email từ Hộp thư đến bên dưới để AI tự động mở tệp PDF/ảnh scan đính kèm, bóc tách OCR và cấp số tự động.</span>
-                      </div>
-                    </div>
 
-                    {/* Prominent Email Inbox List / Selector */}
-                    <div className="bg-white p-3 rounded-xl border-2 border-blue-200 shadow-sm space-y-2">
-                      <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-blue-800">
-                          <Mail className="w-4 h-4 text-blue-600" />
-                          <span>Hộp thư đến Văn thư (4 thư mới có file đính kèm):</span>
-                        </span>
-                        <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
-                          Bấm chọn 1-Click
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col gap-2 text-xs">
-                        {/* Email item 1 */}
-                        <button
-                          type="button"
-                          id="btn-select-email-cv-bo"
-                          onClick={() => loadSampleEmailWithAttachment("CV_BO")}
-                          className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
-                            extractedFromAttachmentName === "CongVan_HuongDan_942_BTTTT.pdf"
-                              ? "bg-blue-50/90 border-blue-500 ring-2 ring-blue-400/30 shadow-xs"
-                              : "bg-slate-50/80 hover:bg-blue-50/50 hover:border-blue-300 border-slate-200"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-blue-800 text-[12px] flex items-center gap-1.5">
-                              <span>📨 Bộ Thông tin & Truyền thông</span>
-                              {extractedFromAttachmentName === "CongVan_HuongDan_942_BTTTT.pdf" && (
-                                <span className="text-[9px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded">
-                                  Đang chọn
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-medium">09:15 Hôm nay</span>
-                          </div>
-                          <div className="text-[11px] font-semibold text-slate-700 line-clamp-1 mb-1">
-                            V/v Hướng dẫn báo cáo tuân thủ an toàn thông tin mạng & định danh điện tử quý 3/2026
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-200/60">
-                            <span className="text-emerald-700 font-medium flex items-center gap-1">
-                              <Paperclip className="w-3 h-3 text-emerald-600" />
-                              <strong className="font-mono">CongVan_HuongDan_942_BTTTT.pdf</strong> (185 KB)
-                            </span>
-                            <span className="text-blue-600 font-bold hover:underline">
-                              {extractedFromAttachmentName === "CongVan_HuongDan_942_BTTTT.pdf" ? "✓ Đã nạp OCR" : "👉 Chọn thư này"}
-                            </span>
-                          </div>
-                        </button>
-
-                        {/* Email item 2 */}
-                        <button
-                          type="button"
-                          id="btn-select-email-ttr-tckt"
-                          onClick={() => loadSampleEmailWithAttachment("TTR_TCKT")}
-                          className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
-                            extractedFromAttachmentName === "ToTrinh_08_PheDuyet_DuToan_KinhPhi.pdf"
-                              ? "bg-indigo-50/90 border-indigo-500 ring-2 ring-indigo-400/30 shadow-xs"
-                              : "bg-slate-50/80 hover:bg-indigo-50/50 hover:border-indigo-300 border-slate-200"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-indigo-800 text-[12px] flex items-center gap-1.5">
-                              <span>📑 Phòng Tài chính - Kế toán</span>
-                              {extractedFromAttachmentName === "ToTrinh_08_PheDuyet_DuToan_KinhPhi.pdf" && (
-                                <span className="text-[9px] bg-indigo-600 text-white font-bold px-1.5 py-0.2 rounded">
-                                  Đang chọn
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-medium">10:30 Hôm nay</span>
-                          </div>
-                          <div className="text-[11px] font-semibold text-slate-700 line-clamp-1 mb-1">
-                            [Kính trình Ban Giám đốc] Tờ trình phê duyệt dự toán kinh phí bản quyền AI OCR
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-200/60">
-                            <span className="text-emerald-700 font-medium flex items-center gap-1">
-                              <Paperclip className="w-3 h-3 text-emerald-600" />
-                              <strong className="font-mono">ToTrinh_08_PheDuyet_DuToan_KinhPhi.pdf</strong> (240 KB)
-                            </span>
-                            <span className="text-indigo-600 font-bold hover:underline">
-                              {extractedFromAttachmentName === "ToTrinh_08_PheDuyet_DuToan_KinhPhi.pdf" ? "✓ Đã nạp OCR" : "👉 Chọn thư này"}
-                            </span>
-                          </div>
-                        </button>
-
-                        {/* Email item 3 */}
-                        <button
-                          type="button"
-                          id="btn-select-email-hd-cloud"
-                          onClick={() => loadSampleEmailWithAttachment("HD_CLOUD")}
-                          className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
-                            extractedFromAttachmentName === "HopDong_KinhTe_057_Signed_Scan.pdf"
-                              ? "bg-amber-50/90 border-amber-500 ring-2 ring-amber-400/30 shadow-xs"
-                              : "bg-slate-50/80 hover:bg-amber-50/50 hover:border-amber-300 border-slate-200"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-amber-800 text-[12px] flex items-center gap-1.5">
-                              <span>🤝 Ban Pháp chế & Đối tác Cloud</span>
-                              {extractedFromAttachmentName === "HopDong_KinhTe_057_Signed_Scan.pdf" && (
-                                <span className="text-[9px] bg-amber-600 text-white font-bold px-1.5 py-0.2 rounded">
-                                  Đang chọn
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-medium">14:00 Hôm nay</span>
-                          </div>
-                          <div className="text-[11px] font-semibold text-slate-700 line-clamp-1 mb-1">
-                            [Bản scan có dấu] Hợp đồng nguyên tắc cung cấp giải pháp máy chủ Cloud & AI OCR
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-200/60">
-                            <span className="text-emerald-700 font-medium flex items-center gap-1">
-                              <Paperclip className="w-3 h-3 text-emerald-600" />
-                              <strong className="font-mono">HopDong_KinhTe_057_Signed_Scan.pdf</strong> (412 KB)
-                            </span>
-                            <span className="text-amber-600 font-bold hover:underline">
-                              {extractedFromAttachmentName === "HopDong_KinhTe_057_Signed_Scan.pdf" ? "✓ Đã nạp OCR" : "👉 Chọn thư này"}
-                            </span>
-                          </div>
-                        </button>
-
-                        {/* Email item 4 */}
-                        <button
-                          type="button"
-                          id="btn-select-email-qd-nhansu"
-                          onClick={() => loadSampleEmailWithAttachment("QD_NHAN_SU")}
-                          className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
-                            extractedFromAttachmentName === "QuyetDinh_DieuChinh_NhanSu_2026.pdf"
-                              ? "bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-400/30 shadow-xs"
-                              : "bg-slate-50/80 hover:bg-emerald-50/50 hover:border-emerald-300 border-slate-200"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-emerald-800 text-[12px] flex items-center gap-1.5">
-                              <span>📜 Văn phòng Ban Giám đốc</span>
-                              {extractedFromAttachmentName === "QuyetDinh_DieuChinh_NhanSu_2026.pdf" && (
-                                <span className="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.2 rounded">
-                                  Đang chọn
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-medium">15:30 Hôm nay</span>
-                          </div>
-                          <div className="text-[11px] font-semibold text-slate-700 line-clamp-1 mb-1">
-                            [Ban hành Quyết định] Kiện toàn nhân sự & phân quyền quản lý số hóa văn bản
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-200/60">
-                            <span className="text-emerald-700 font-medium flex items-center gap-1">
-                              <Paperclip className="w-3 h-3 text-emerald-600" />
-                              <strong className="font-mono">QuyetDinh_DieuChinh_NhanSu_2026.pdf</strong> (160 KB)
-                            </span>
-                            <span className="text-emerald-600 font-bold hover:underline">
-                              {extractedFromAttachmentName === "QuyetDinh_DieuChinh_NhanSu_2026.pdf" ? "✓ Đã nạp OCR" : "👉 Chọn thư này"}
-                            </span>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Attachment & Custom Manual Entry (Expandable/Compact) */}
-                    <div className="bg-slate-100/80 rounded-xl p-3 border border-slate-200 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <Paperclip className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Tệp đính kèm đang xử lý ({emailAttachments.length})</span>
-                        </label>
-
-                        <label
-                          htmlFor="email-attachment-file-input"
-                          className="text-[11px] text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 cursor-pointer bg-white px-2 py-0.5 rounded border border-blue-200"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Tải file khác từ máy</span>
-                          <input
-                            id="email-attachment-file-input"
-                            type="file"
-                            accept="image/*,application/pdf"
-                            onChange={handleEmailAttachmentUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-
-                      {/* Display attachments cards */}
-                      {emailAttachments.length > 0 ? (
-                        <div className="space-y-1.5">
-                          {emailAttachments.map((att) => (
-                            <div
-                              key={att.id}
-                              className="p-2 rounded-lg bg-white border border-blue-200 flex items-center justify-between gap-2 text-xs shadow-xs"
-                            >
-                              <div className="flex items-center gap-2 truncate min-w-0">
-                                <div className="w-7 h-7 rounded bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                                  <FileText className="w-3.5 h-3.5" />
-                                </div>
-                                <div className="truncate">
-                                  <div className="font-bold text-slate-800 truncate text-[11px] flex items-center gap-1.5">
-                                    <span>{att.filename}</span>
-                                    {att.isMainDocument && (
-                                      <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold shrink-0">
-                                        Nguồn OCR chính
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-[10px] text-slate-500">
-                                    {(att.size / 1024).toFixed(1)} KB • {att.mimeType || "Tệp đính kèm"}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEmailAttachments((prev) => prev.filter((a) => a.id !== att.id));
-                                  setImages((prev) => prev.filter((img) => img.name !== att.filename));
-                                }}
-                                className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-50 cursor-pointer"
-                                title="Xóa tệp"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-2.5 border border-dashed border-slate-300 rounded-lg text-center bg-white">
-                          <span className="text-[11px] text-slate-500 block">
-                            Chưa có tệp. Hãy bấm vào một email mẫu ở trên để nạp tự động.
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Email Text / Body (Collapsible or compact) */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-bold text-slate-700">
-                          Nội dung thư điện tử (Email Body & Header)
-                        </label>
-                        <span className="text-[10px] text-slate-400">Có thể chỉnh sửa hoặc dán thư mới</span>
-                      </div>
-                      <textarea
-                        rows={2}
-                        value={emailText}
-                        onChange={(e) => setEmailText(e.target.value)}
-                        placeholder="Dán tiêu đề, người gửi và toàn bộ nội dung email vào đây..."
-                        className="w-full p-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      id="btn-parse-email"
-                      onClick={handleParseEmail}
-                      disabled={isOcrProcessing || (!emailText.trim() && emailAttachments.length === 0)}
-                      className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      <span>Bóc tách tệp đính kèm & Tự động Phân loại OCR</span>
-                    </button>
-                  </div>
-                )}
               </div>
               {/* Mobile Step 1 Next Action Button */}
               <div className="lg:hidden mt-4 pt-3 border-t border-slate-200">
@@ -1621,11 +1057,11 @@ Người gửi: Chánh Văn phòng Lê Hoàng Long`;
                   type="button"
                   id="btn-issue-number-submit"
                   onClick={handleIssueNumberAndSave}
-                  disabled={isOcrProcessing || !title.trim()}
+                  disabled={isOcrProcessing || isSubmitting || !title.trim()}
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-500/20 cursor-pointer transition-all flex items-center gap-2"
                 >
                   <FileCheck className="w-4 h-4" />
-                  <span>Xác nhận Cấp số & Lưu trữ vào sổ</span>
+                  <span>{isSubmitting ? "Đang cấp số & lưu trữ..." : "Xác nhận Cấp số & Lưu trữ vào sổ"}</span>
                 </button>
               </div>
             </div>

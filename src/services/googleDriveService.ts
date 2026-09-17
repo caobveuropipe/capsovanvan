@@ -65,6 +65,14 @@ export function clearGoogleDriveConfig(): void {
   }
 }
 
+// Kiểm tra token đã hết hạn hay chưa (hoặc sắp hết hạn trong vòng 1 phút)
+export function isDriveTokenExpired(config: GoogleDriveConfig): boolean {
+  if (!config.accessToken) return true;
+  if (!config.tokenExpiresAt) return false;
+  // Buffer 60 giây trước khi thực sự hết hạn
+  return Date.now() >= config.tokenExpiresAt - 60000;
+}
+
 // Convert Base64 or URL-encoded dataURL to Blob safely
 export function dataURLtoBlob(dataurl: string): Blob {
   if (!dataurl) {
@@ -286,13 +294,59 @@ export async function readDatabaseFromGoogleDrive(
   }
 }
 
+// Strip heavy base64 dataUrl from documents before uploading to Google Drive JSON registry
+function sanitizeDatabasePayload(payload: DriveDatabasePayload): DriveDatabasePayload {
+  const sanitizedDocs = (payload.documents || []).map((doc: any) => {
+    // If doc has images, strip dataUrl from each image to keep JSON lightweight
+    const sanitizedImages = (doc.images || []).map((img: any) => ({
+      id: img.id,
+      name: img.name,
+      mimeType: img.mimeType,
+      size: img.size,
+      capturedAt: img.capturedAt,
+      pageNumber: img.pageNumber,
+      rotation: img.rotation,
+      // Do NOT include img.dataUrl here (already uploaded as a separate file on Drive)
+    }));
+
+    // If doc has email attachments, also strip attachment dataUrl
+    let sanitizedEmail = doc.emailMetadata;
+    if (sanitizedEmail && sanitizedEmail.attachments) {
+      sanitizedEmail = {
+        ...sanitizedEmail,
+        attachments: sanitizedEmail.attachments.map((att: any) => ({
+          id: att.id,
+          filename: att.filename,
+          mimeType: att.mimeType,
+          size: att.size,
+          extractedText: att.extractedText,
+          isMainDocument: att.isMainDocument,
+          // Do NOT include att.dataUrl
+        })),
+      };
+    }
+
+    return {
+      ...doc,
+      images: sanitizedImages,
+      emailMetadata: sanitizedEmail,
+    };
+  });
+
+  return {
+    ...payload,
+    documents: sanitizedDocs,
+  };
+}
+
 // Save or Update JSON database to Google Drive (Deduplicated)
 export async function saveDatabaseToGoogleDrive(
   accessToken: string,
   folderId: string | undefined,
   payload: DriveDatabasePayload
 ): Promise<string> {
-  const jsonString = JSON.stringify(payload, null, 2);
+  const sanitizedPayload = sanitizeDatabasePayload(payload);
+  const jsonString = JSON.stringify(sanitizedPayload, null, 2);
   const blob = new Blob([jsonString], { type: "application/json" });
 
   // 1. Check if database file already exists
