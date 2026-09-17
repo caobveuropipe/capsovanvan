@@ -193,7 +193,13 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
   };
 
   const handleSaveSettings = () => {
-    const trimmedId = customFolderId.trim();
+    let trimmedId = customFolderId.trim();
+    // Bóc tách nếu trimmedId là full URL
+    const folderUrlMatch = trimmedId.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    if (folderUrlMatch && folderUrlMatch[1]) {
+      trimmedId = folderUrlMatch[1];
+    }
+
     const updated: GoogleDriveConfig = {
       ...config,
       folderId: trimmedId || undefined,
@@ -350,48 +356,31 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
 
               <div className="pt-2 border-t border-slate-700/40">
                 <label className="block text-[11px] text-slate-400 mb-1">
-                  Folder ID tùy chỉnh (nếu muốn lưu vào thư mục cụ thể có sẵn):
+                  Folder ID hoặc Đường dẫn (URL) thư mục Google Drive:
                 </label>
                 <input
                   type="text"
                   value={customFolderId}
-                  onChange={(e) => setCustomFolderId(e.target.value)}
-                  placeholder="Ví dụ: 1a2B3c4D5e... (đoạn ID trên URL Google Drive)"
+                  onChange={(e) => {
+                    const rawVal = e.target.value;
+                    // Hỗ trợ trích xuất ID nếu người dùng dán nguyên đường dẫn URL Google Drive
+                    // Ví dụ: https://drive.google.com/drive/folders/1e87__irSwgeEH07gOvCo5ZU6WU2sIMCr
+                    // hoặc: https://drive.google.com/drive/u/0/folders/1e87__irSwgeEH07gOvCo5ZU6WU2sIMCr?usp=sharing
+                    const folderUrlMatch = rawVal.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+                    if (folderUrlMatch && folderUrlMatch[1]) {
+                      setCustomFolderId(folderUrlMatch[1]);
+                    } else {
+                      setCustomFolderId(rawVal.trim());
+                    }
+                  }}
+                  placeholder="Dán link folder hoặc ID: https://drive.google.com/drive/folders/..."
                   className="w-full px-3 py-2 text-xs bg-slate-950/80 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
                 />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Mở folder trên Google Drive, copy đoạn ký tự cuối cùng trên thanh địa chỉ trình duyệt.
+                <p className="text-[10px] text-slate-400 mt-1">
+                  💡 Bạn có thể copy nguyên thanh địa chỉ trình duyệt khi đang mở folder Google Drive rồi dán trực tiếp vào đây.
                 </p>
               </div>
             </div>
-          </div>
-
-          {/* Developer / Client ID Setting */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-blue-400" />
-                Google Client ID (Dành cho Platform)
-              </label>
-              <a
-                href="https://console.cloud.google.com/apis/credentials"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1"
-              >
-                Lấy ID trên Cloud Console <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <input
-              type="text"
-              value={config.clientId}
-              onChange={(e) => setConfig({ ...config, clientId: e.target.value })}
-              placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com"
-              className="w-full px-3 py-2 text-xs bg-slate-950/80 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
-            />
-            <p className="text-[11px] text-slate-500">
-              *Mẹo: Client ID này cấu hình 1 lần trên Platform hoặc người dùng có thể tự dán Client ID cá nhân.
-            </p>
           </div>
 
           {/* Auto Upload Toggle */}

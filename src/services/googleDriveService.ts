@@ -19,10 +19,12 @@ export interface GoogleDriveFileResult {
   thumbnailLink?: string;
 }
 
-const STORAGE_KEY = "docnum_google_drive_config_v1";
+export const DEFAULT_GOOGLE_CLIENT_ID =
+  (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
+  "37756221918-fp4k2sm04mc7ep9jkmbjnocjstjnnn43.apps.googleusercontent.com";
 
 export const DEFAULT_DRIVE_CONFIG: GoogleDriveConfig = {
-  clientId: "",
+  clientId: DEFAULT_GOOGLE_CLIENT_ID,
   apiKey: "",
   autoUpload: true,
 };
@@ -31,7 +33,13 @@ export function getGoogleDriveConfig(): GoogleDriveConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return { ...DEFAULT_DRIVE_CONFIG, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      // Đảm bảo luôn có clientId mặc định nếu trước đó chưa lưu hoặc đang rỗng
+      return {
+        ...DEFAULT_DRIVE_CONFIG,
+        ...parsed,
+        clientId: parsed.clientId || DEFAULT_GOOGLE_CLIENT_ID,
+      };
     }
   } catch (e) {
     console.error("Failed to load Google Drive config from storage", e);
