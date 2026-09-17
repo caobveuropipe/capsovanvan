@@ -13,6 +13,7 @@ import { PrintDocumentModal } from "./components/PrintDocumentModal";
 import { GoogleDriveConfigModal } from "./components/GoogleDriveConfigModal";
 import { DashboardStats } from "./components/DashboardStats";
 import { MobileBottomNav } from "./components/MobileBottomNav";
+import { HardDrive, AlertCircle, ArrowRight, FolderPlus } from "lucide-react";
 import { DocumentCategory, DocumentRecord } from "./types";
 import {
   getCategories,
@@ -299,6 +300,69 @@ export default function App() {
 
       {/* Main View Area */}
       <main className="flex-1 pb-24 md:pb-12">
+        {/* Banner thông báo nhắc nhở nếu chưa kết nối hoặc chưa cấu hình folder Google Drive */}
+        {!driveConfig.userEmail ? (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+            <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-400/30 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 transition-all hover:border-amber-400/50">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 shrink-0">
+                  <HardDrive className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-slate-800">
+                      Chưa kết nối Google Drive lưu trữ chung
+                    </span>
+                    <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 rounded-md border border-amber-200">
+                      Khuyến nghị
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Hãy kết nối Google Drive và cấu hình thư mục lưu trữ để tự động đồng bộ sổ văn bản, lưu file scan và dùng chung dữ liệu trên nhiều thiết bị.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsGoogleDriveOpen(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 rounded-xl shadow-sm transition-all cursor-pointer shrink-0 hover:shadow-md hover:scale-[1.02]"
+              >
+                <span>Cấu hình Google Drive ngay</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : !driveConfig.folderId ? (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+            <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent border border-blue-400/30 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 transition-all hover:border-blue-400/50">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-600 shrink-0">
+                  <FolderPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-slate-800">
+                      Chưa chọn thư mục lưu trữ trên Google Drive
+                    </span>
+                    <span className="text-xs text-slate-500 font-mono">({driveConfig.userEmail})</span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Dán đường dẫn (URL) hoặc Folder ID thư mục Google Drive của bạn để toàn bộ tài liệu văn bản được tổ chức ngăn nắp vào đúng nơi.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsGoogleDriveOpen(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-sm transition-all cursor-pointer shrink-0 hover:shadow-md hover:scale-[1.02]"
+              >
+                <span>Chọn thư mục lưu trữ</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {isLoading ? (
           <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
             <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
