@@ -1,0 +1,11 @@
+{
+  "name": "Hệ thống Cấp số & Quản lý Văn bản Thông minh",
+  "description": "Hệ thống tự động tiếp nhận yêu cầu, phân loại OCR thông minh bằng AI, cấp số văn bản tự động theo tiền tố/hậu tố và lưu trữ hình ảnh tra cứu/in ấn.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
+
