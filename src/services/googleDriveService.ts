@@ -168,6 +168,50 @@ export async function uploadFileToGoogleDrive(
   return result as GoogleDriveFileResult;
 }
 
+// Find folder by name (to avoid creating duplicate folders when logging in from multiple devices)
+export async function findDriveFolderByName(
+  accessToken: string,
+  folderName: string,
+  parentFolderId?: string
+): Promise<{ id: string; name: string } | null> {
+  try {
+    let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+    if (parentFolderId && parentFolderId !== "root") {
+      query += ` and '${parentFolderId}' in parents`;
+    }
+
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=1`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.files && data.files.length > 0) {
+      return data.files[0];
+    }
+    return null;
+  } catch (err) {
+    console.warn("Lỗi tìm thư mục trên Google Drive:", err);
+    return null;
+  }
+}
+
+// Find existing folder or create new subfolder on Google Drive
+export async function findOrCreateDriveFolder(
+  accessToken: string,
+  folderName: string,
+  parentFolderId?: string
+): Promise<{ id: string; name: string }> {
+  // First, check if folder already exists on user's Drive
+  const existing = await findDriveFolderByName(accessToken, folderName, parentFolderId);
+  if (existing) {
+    return existing;
+  }
+  // Otherwise, create it
+  return createDriveFolder(accessToken, folderName, parentFolderId);
+}
+
 // Create subfolder on Google Drive
 export async function createDriveFolder(
   accessToken: string,

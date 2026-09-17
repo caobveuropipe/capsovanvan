@@ -101,10 +101,28 @@ export default function App() {
         );
 
         if (remoteData) {
-          // Merge / Update categories from remote if newer
+          // Merge / Update categories: lấy cấu hình mới nhất và số đếm lớn nhất để không bao giờ bị nhảy lùi số
           if (Array.isArray(remoteData.categories) && remoteData.categories.length > 0) {
-            saveCategories(remoteData.categories);
-            setCategories(remoteData.categories);
+            const localCats = getCategories();
+            const mergedCats = remoteData.categories.map((rCat: DocumentCategory) => {
+              const lCat = localCats.find((c) => c.id === rCat.id || c.code.toUpperCase() === rCat.code.toUpperCase());
+              if (!lCat) return rCat;
+              return {
+                ...rCat,
+                // Lấy số đếm lớn nhất giữa 2 thiết bị để tránh cấp trùng số
+                currentCount: Math.max(rCat.currentCount || 0, lCat.currentCount || 0),
+              };
+            });
+
+            // Bổ sung các danh mục mới chỉ có ở local (nếu có)
+            for (const lCat of localCats) {
+              if (!mergedCats.some((c: DocumentCategory) => c.id === lCat.id || c.code.toUpperCase() === lCat.code.toUpperCase())) {
+                mergedCats.push(lCat);
+              }
+            }
+
+            saveCategories(mergedCats);
+            setCategories(mergedCats);
           }
 
           // Merge / Save documents into local IndexedDB

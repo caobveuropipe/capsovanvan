@@ -20,6 +20,7 @@ import {
   saveGoogleDriveConfig,
   clearGoogleDriveConfig,
   createDriveFolder,
+  findOrCreateDriveFolder,
   isDriveTokenExpired,
 } from "../services/googleDriveService";
 
@@ -128,14 +129,14 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
 
             if (!targetFolderId) {
               try {
-                const folderRes = await createDriveFolder(
+                const folderRes = await findOrCreateDriveFolder(
                   accessToken,
                   "[VCC] Sổ Văn Bản Điện Tử"
                 );
                 targetFolderId = folderRes.id;
-                targetFolderName = "[VCC] Sổ Văn Bản Điện Tử";
+                targetFolderName = folderRes.name || "[VCC] Sổ Văn Bản Điện Tử";
               } catch (fErr) {
-                console.warn("Could not auto create folder, using root", fErr);
+                console.warn("Could not find or create folder, using root", fErr);
                 targetFolderId = "root";
                 targetFolderName = "Google Drive (Thư mục gốc)";
               }
