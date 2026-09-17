@@ -86,12 +86,28 @@ export default function App() {
 
     setIsDriveSyncing(true);
     try {
-      // 1. Check if database file exists on Google Drive
-      const remoteDbFile = await findDriveFileByName(
+      // 1. Check if database file exists on Google Drive in current folder
+      let remoteDbFile = await findDriveFileByName(
         currentConfig.accessToken,
         DRIVE_DB_FILENAME,
         currentConfig.folderId
       );
+
+      // Nếu trong thư mục hiện tại không có file database, tìm thử trên toàn bộ Drive của user
+      // (Xử lý trường hợp điện thoại kết nối vào folder mới tạo nhầm thay vì folder gốc của PC)
+      if (!remoteDbFile) {
+        const globalDbFile = await findDriveFileByName(
+          currentConfig.accessToken,
+          DRIVE_DB_FILENAME
+        );
+        if (globalDbFile && globalDbFile.parents && globalDbFile.parents.length > 0) {
+          remoteDbFile = globalDbFile;
+          const recoveredFolderId = globalDbFile.parents[0];
+          // Tự động khôi phục cấu hình về đúng folder chứa database
+          currentConfig.folderId = recoveredFolderId;
+          saveGoogleDriveConfig(currentConfig);
+        }
+      }
 
       if (remoteDbFile) {
         // Read remote database

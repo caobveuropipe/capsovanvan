@@ -180,7 +180,8 @@ export async function findDriveFolderByName(
       query += ` and '${parentFolderId}' in parents`;
     }
 
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=1`;
+    // Sắp xếp createdTime asc để luôn lấy thư mục ĐẦU TIÊN đã tạo trên Drive của người dùng
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)&orderBy=createdTime asc&pageSize=10`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -188,7 +189,7 @@ export async function findDriveFolderByName(
     if (!res.ok) return null;
     const data = await res.json();
     if (data.files && data.files.length > 0) {
-      return data.files[0];
+      return { id: data.files[0].id, name: data.files[0].name };
     }
     return null;
   } catch (err) {
@@ -198,17 +199,40 @@ export async function findDriveFolderByName(
 }
 
 // Find existing folder or create new subfolder on Google Drive
+// Thông minh: Nếu đã có file database tồn tại ở đâu đó trên Drive, trỏ thẳng vào folder đó!
 export async function findOrCreateDriveFolder(
   accessToken: string,
   folderName: string,
   parentFolderId?: string
 ): Promise<{ id: string; name: string }> {
-  // First, check if folder already exists on user's Drive
+  // 1. Kiểm tra xem trên toàn bộ Drive đã có file database vcc_documents_database.json chưa
+  try {
+    const existingDb = await findDriveFileByName(accessToken, DRIVE_DB_FILENAME);
+    if (existingDb && existingDb.parents && existingDb.parents.length > 0) {
+      const parentId = existingDb.parents[0];
+      // Lấy thông tin folder cha của file database
+      const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files/${parentId}?fields=id,name`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (folderRes.ok) {
+        const folderData = await folderRes.json();
+        if (folderData.id) {
+          return { id: folderData.id, name: folderData.name || folderName };
+        }
+      }
+      return { id: parentId, name: folderName };
+    }
+  } catch (dbErr) {
+    console.warn("Không thể tìm file database cũ:", dbErr);
+  }
+
+  // 2. Tìm thư mục theo tên (lấy thư mục cũ nhất đã tạo)
   const existing = await findDriveFolderByName(accessToken, folderName, parentFolderId);
   if (existing) {
     return existing;
   }
-  // Otherwise, create it
+
+  // 3. Nếu chưa có bất kỳ thư mục nào, mới tạo thư mục mới
   return createDriveFolder(accessToken, folderName, parentFolderId);
 }
 
@@ -282,7 +306,7 @@ export async function findDriveFileByName(
   accessToken: string,
   fileName: string,
   folderId?: string
-): Promise<{ id: string; name: string } | null> {
+): Promise<{ id: string; name: string; parents?: string[] } | null> {
   try {
     let query = `name = '${fileName}' and trashed = false`;
     if (folderId && folderId !== "root") {
@@ -290,7 +314,7 @@ export async function findDriveFileByName(
     }
 
     // List all matches (sorted newest first)
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=10`;
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,parents,modifiedTime)&orderBy=modifiedTime desc&pageSize=10`;
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
