@@ -100,7 +100,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   id="btn-open-google-drive"
                   onClick={onOpenGoogleDrive}
-                  className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs sm:text-sm font-medium transition-colors cursor-pointer shadow-sm min-h-[38px] ${
+                  className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border text-xs sm:text-sm font-medium transition-colors cursor-pointer shadow-sm min-h-[38px] ${
                     isDriveConnected
                       ? isDriveTokenExpired
                         ? "bg-amber-950/40 text-amber-300 border-amber-600/60 hover:bg-amber-900/40"
@@ -122,9 +122,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                         : "bg-slate-500"
                     }`}
                   />
-                  <span>Google Drive</span>
+                  <span className="hidden xs:inline">Google Drive</span>
+                  <span className="xs:hidden font-mono text-[11px]">Drive</span>
                   {isDriveTokenExpired && (
-                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30">
+                    <span className="text-[9px] sm:text-[10px] bg-amber-500/20 text-amber-300 px-1 sm:px-1.5 py-0.5 rounded border border-amber-500/30">
                       Hết hạn
                     </span>
                   )}

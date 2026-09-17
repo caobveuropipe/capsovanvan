@@ -466,6 +466,11 @@ export default function App() {
         onTabChange={setCurrentTab}
         onOpenIntake={() => setIsIntakeOpen(true)}
         onOpenConfig={() => setIsConfigOpen(true)}
+        onOpenGoogleDrive={() => setIsGoogleDriveOpen(true)}
+        onSyncDrive={() => syncWithGoogleDrive(true)}
+        isDriveConnected={!!driveConfig.accessToken}
+        isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
+        isSyncing={isDriveSyncing}
         totalDocsCount={documents.length}
       />
 
