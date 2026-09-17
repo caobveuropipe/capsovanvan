@@ -19,6 +19,8 @@ export interface GoogleDriveFileResult {
   thumbnailLink?: string;
 }
 
+const STORAGE_KEY = "docnum_google_drive_config_v1";
+
 export const DEFAULT_GOOGLE_CLIENT_ID =
   (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
   "37756221918-fp4k2sm04mc7ep9jkmbjnocjstjnnn43.apps.googleusercontent.com";
