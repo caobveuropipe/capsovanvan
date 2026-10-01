@@ -25,6 +25,7 @@ import {
   clearAllDocuments,
   seedInitialDocumentsIfEmpty,
   incrementCategoryCount,
+  reconcileCategoryCounts,
 } from "./services/storage";
 import {
   getGoogleDriveConfig,
@@ -156,7 +157,10 @@ export default function App() {
               await saveDocument(rDoc);
             }
             const refreshedDocs = await getAllDocuments();
+            // Tự động cân chỉnh bộ đếm categories theo các văn bản thực tế tải về
+            const reconciledCats = reconcileCategoryCounts(refreshedDocs);
             setDocuments(refreshedDocs);
+            setCategories(reconciledCats);
           }
 
           if (isManual) {
@@ -233,8 +237,9 @@ export default function App() {
     async function initData() {
       try {
         await seedInitialDocumentsIfEmpty();
-        const loadedCats = getCategories();
         const loadedDocs = await getAllDocuments();
+        // Tự động cân chỉnh bộ đếm theo số văn bản thực tế lớn nhất đang có trong sổ
+        const loadedCats = reconcileCategoryCounts(loadedDocs);
         setCategories(loadedCats);
         setDocuments(loadedDocs);
 
@@ -361,9 +366,9 @@ export default function App() {
     }
 
     await saveDocument(docToSave);
-    incrementCategoryCount(docToSave.categoryId);
-    const updatedCats = getCategories();
     const updatedDocs = await getAllDocuments();
+    // Tự động cân chỉnh bộ đếm categories theo số lớn nhất thực tế trong sổ
+    const updatedCats = reconcileCategoryCounts(updatedDocs);
     setCategories(updatedCats);
     setDocuments(updatedDocs);
 
@@ -397,11 +402,14 @@ export default function App() {
       // 2. Xóa khỏi cơ sở dữ liệu nội bộ
       await deleteDocument(id);
       const updatedDocs = await getAllDocuments();
+      // Tự động cân chỉnh lùi bộ đếm nếu vừa xóa văn bản có số lớn nhất
+      const updatedCats = reconcileCategoryCounts(updatedDocs);
+      setCategories(updatedCats);
       setDocuments(updatedDocs);
 
-      // 3. Cập nhật ngay lập tức sổ văn bản đã xóa lên file database Google Drive
+      // 3. Cập nhật ngay lập tức sổ văn bản và số đếm đã cân chỉnh lên file database Google Drive
       if (currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
-        await pushLocalDbToDrive(categories, updatedDocs);
+        await pushLocalDbToDrive(updatedCats, updatedDocs);
       }
 
       // 4. Bắn tín hiệu Realtime tức thời tới các thiết bị khác

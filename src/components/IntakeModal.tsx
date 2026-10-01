@@ -397,12 +397,20 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     }
 
     const nowIso = new Date().toISOString();
+    let seqNum = selectedCategory.currentCount + 1;
+    if (customDocNumberOverride.trim()) {
+      const match = customDocNumberOverride.match(/\b(\d+)\b/);
+      if (match) {
+        seqNum = parseInt(match[1], 10);
+      }
+    }
+
     const verificationCode = generateVerificationCode(finalDocNumber, selectedCategory.code);
 
     const newDoc: DocumentRecord = {
       id: `doc-${Date.now()}`,
       docNumber: finalDocNumber,
-      sequenceNumber: selectedCategory.currentCount + 1,
+      sequenceNumber: seqNum,
       categoryId: selectedCategory.id,
       categoryCode: selectedCategory.code,
       categoryName: selectedCategory.name,

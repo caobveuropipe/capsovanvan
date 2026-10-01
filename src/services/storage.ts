@@ -240,6 +240,57 @@ export function incrementCategoryCount(categoryId: string): DocumentCategory | n
   return null;
 }
 
+/**
+ * Trích xuất số thứ tự thực tế của văn bản từ sequenceNumber hoặc docNumber
+ */
+export function extractDocSequence(doc: DocumentRecord): number {
+  if (typeof doc.sequenceNumber === "number" && !isNaN(doc.sequenceNumber) && doc.sequenceNumber > 0) {
+    return doc.sequenceNumber;
+  }
+  const match = doc.docNumber.match(/\b(\d+)\b/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return 0;
+}
+
+/**
+ * Tự động đồng bộ và cân chỉnh bộ đếm currentCount của từng danh mục
+ * theo số lớn nhất thực tế đang có trong sổ văn bản
+ */
+export function reconcileCategoryCounts(docs: DocumentRecord[]): DocumentCategory[] {
+  const categories = getCategories();
+  let hasChange = false;
+
+  for (let i = 0; i < categories.length; i++) {
+    const cat = categories[i];
+    const catDocs = docs.filter(
+      (d) =>
+        d.categoryId === cat.id ||
+        (d.categoryCode && cat.code && d.categoryCode.toUpperCase() === cat.code.toUpperCase())
+    );
+
+    let maxSeq = 0;
+    for (const d of catDocs) {
+      const seq = extractDocSequence(d);
+      if (seq > maxSeq) {
+        maxSeq = seq;
+      }
+    }
+
+    if (cat.currentCount !== maxSeq) {
+      cat.currentCount = maxSeq;
+      hasChange = true;
+    }
+  }
+
+  if (hasChange) {
+    saveCategories(categories);
+  }
+
+  return categories;
+}
+
 // IndexedDB Document Records Management
 export async function getAllDocuments(): Promise<DocumentRecord[]> {
   try {
