@@ -73,15 +73,19 @@ HC-ADM-CapSoVanBan/
 
 | Mục đích | Lệnh | Điều kiện | Ghi chú |
 |----------|------|-----------|---------|
-| Chạy dev | `npm run dev` | Có `GEMINI_API_KEY` trong `.env` để dùng tính năng AI OCR | Khởi chạy server tại `http://localhost:3000` |
-| Kiểm tra kiểu (Lint) | `npm run lint` | Đã cài đặt `node_modules` | Chạy `tsc --noEmit` |
-| Build production | `npm run build` | Đã cài đặt `node_modules` | Build Vite frontend và bundle `server.ts` sang `dist/server.cjs` |
-| Chạy production | `npm run start` | Đã chạy `npm run build` | Khởi động server production từ `dist/server.cjs` |
+| Chạy dev | `npm run dev` | Có `GEMINI_API_KEY` trong `.env` để dùng tính năng AI OCR | Khởi chạy server tại `http://localhost:5174` |
+| Build production | `npm run build` | Cần `dist/` và `dist/server.cjs` | Đóng gói cả frontend (Vite) và backend bundle (esbuild) |
+| Chạy production | `npm start` | Sau khi đã `npm run build` | Chạy Node server phục vụ file tĩnh và API |
+| Kiểm tra kiểu | `npm run lint` | TypeScript installed | Chạy `tsc --noEmit` để rà soát lỗi type |
 
-## 6. Luồng đọc nhanh cho AI
+---
 
-- Khi sửa giao diện nạp văn bản, OCR, camera hoặc bóc tách email: đọc [src/components/IntakeModal.tsx](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/components/IntakeModal.tsx).
-- Khi sửa prompt OCR, schema phân loại tài liệu hoặc kết nối Gemini: đọc [server.ts](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/server.ts).
+## 4. Key Boundaries & Invariants
+
+- Quy tắc sinh số văn bản phải qua hàm [generateDocumentNumber](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/utils/numberGenerator.ts), không được ghép chuỗi tùy tiện tại component UI.
+- Mọi thao tác lưu dữ liệu văn bản vào localStorage phải đồng thời cập nhật số đếm của danh mục tương ứng thông qua [incrementCategoryCount](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/services/storage.ts).
+- Khóa lưu trữ localStorage chuẩn: `doc_categories`, `doc_records`, `doc_audit_logs`.
+- Điểm dễ nhầm: Backend không tách riêng port với frontend ở dev; `server.ts` đóng vai trò vừa là API server vừa là Vite dev middleware trên port 5174.
 - Khi sửa quy tắc sinh số hiệu văn bản: đọc [src/utils/numberGenerator.ts](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/utils/numberGenerator.ts) và [src/components/CategoryConfigModal.tsx](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/components/CategoryConfigModal.tsx).
 - Khi sửa cấu trúc dữ liệu lưu trữ văn bản hoặc danh mục: đọc [src/types.ts](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/types.ts) và [src/services/storage.ts](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/services/storage.ts).
 

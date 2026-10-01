@@ -41,7 +41,10 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
       id="print-modal-overlay"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto"
     >
-      <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[95vh] animate-in fade-in zoom-in-95 duration-200">
+      <div
+        id="print-modal-card"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[95vh] animate-in fade-in zoom-in-95 duration-200"
+      >
         {/* Modal Controls Header (Hidden in Print) */}
         <div className="px-3.5 sm:px-6 py-3 sm:py-4 bg-slate-900 text-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-b border-slate-800 shrink-0 print:hidden">
           <div className="flex items-center justify-between gap-3">

@@ -17,6 +17,8 @@ import {
   FileCheck,
   ArrowLeft,
   ArrowRight,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   DocumentCategory,
@@ -80,6 +82,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   const [ocrError, setOcrError] = useState<string>("");
   const [ocrSuccessNote, setOcrSuccessNote] = useState<string>("");
   const [successDoc, setSuccessDoc] = useState<DocumentRecord | null>(null);
+  const [isCopiedSuccessDocNumber, setIsCopiedSuccessDocNumber] = useState<boolean>(false);
   const [mobileStep, setMobileStep] = useState<1 | 2>(1);
 
   // Camera handling
@@ -482,7 +485,10 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       id="intake-modal-overlay"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto"
     >
-      <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200">
+      <div
+        id="intake-modal-card"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
+      >
         {/* Modal Header */}
         <div className="px-4 sm:px-6 py-3 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -560,9 +566,34 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
               <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold uppercase tracking-wider border border-emerald-200">
                 Đã cấp số thành công vào sổ lưu trữ
               </span>
-              <h3 className="text-3xl font-black font-mono text-slate-900 tracking-tight">
-                {successDoc.docNumber}
-              </h3>
+              <div className="flex items-center justify-center gap-2.5 pt-1">
+                <h3 className="text-3xl font-black font-mono text-slate-900 tracking-tight">
+                  {successDoc.docNumber}
+                </h3>
+                <button
+                  type="button"
+                  id="btn-copy-success-doc-number"
+                  onClick={() => {
+                    navigator.clipboard.writeText(successDoc.docNumber);
+                    setIsCopiedSuccessDocNumber(true);
+                    setTimeout(() => setIsCopiedSuccessDocNumber(false), 2000);
+                  }}
+                  title="Sao chép số hiệu văn bản (để dán vào file Word / Quyết định ban hành)"
+                  className="px-2.5 py-1 text-slate-600 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-2xs"
+                >
+                  {isCopiedSuccessDocNumber ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <span className="text-emerald-700 font-bold">Đã sao chép!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-slate-500" />
+                      <span>Sao chép số</span>
+                    </>
+                  )}
+                </button>
+              </div>
               <p className="text-sm font-semibold text-slate-700 max-w-lg mx-auto">
                 {successDoc.title}
               </p>
@@ -1029,6 +1060,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                         Nhập số hiệu ghi đè (để trống nếu dùng số tự động):
                       </label>
                       <input
+                        id="input-override-doc-number"
                         type="text"
                         value={customDocNumberOverride}
                         onChange={(e) => setCustomDocNumberOverride(e.target.value)}

@@ -14,7 +14,7 @@
 - **Runtime & Dev Server**: `tsx` (chạy trực tiếp TypeScript), Express tích hợp Vite middleware trong môi trường dev, bundle `esbuild` cho production
 - **Database / Persistence**: Client-side storage (`localStorage` qua [storage.ts](file:///d:/Project_VCC/HC-ADM-CapSoVanBan/src/services/storage.ts))
 - **Auth**: Chưa tích hợp (đang chạy local/single-user)
-- **Infrastructure**: Node.js server độc lập, hỗ trợ port 3000
+- **Infrastructure**: Node.js server độc lập, hỗ trợ port 5174 (cấu hình qua PORT trong .env)
 
 ---
 

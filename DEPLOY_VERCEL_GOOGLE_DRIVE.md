@@ -41,8 +41,8 @@ Hệ thống đã được thiết kế sẵn sàng theo mô hình **Multi-Tenan
 5. Vào mục **Credentials** -> **Create Credentials** -> **OAuth client ID**:
    - Application type: **Web application**.
    - **Authorized JavaScript origins**:
-     - `http://localhost:3000` *(Dành cho test local)*
-     - `https://ten-du-an.vercel.app` *(Link Vercel của anh)*
+     - `http://localhost:5174` *(Dành cho test local)*
+     - `https://capsovanban.vercel.app` *(Link Vercel chính thức)*
 6. Copy mã **Client ID** (dạng `xxxx-yyyy.apps.googleusercontent.com`).
 
 ---

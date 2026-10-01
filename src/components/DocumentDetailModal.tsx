@@ -115,7 +115,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
       id="document-detail-modal-overlay"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto"
     >
-      <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200">
+      <div
+        id="document-detail-modal-card"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
+      >
         {/* Header */}
         <div className="px-3.5 sm:px-6 py-3 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -512,6 +515,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                       </span>
                     </div>
                     <button
+                      id="btn-copy-detail-doc-number"
                       onClick={handleCopyNumber}
                       className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
                     >
@@ -591,6 +595,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                       Nội dung chữ trích xuất tự động (OCR AI):
                     </span>
                     <button
+                      id="btn-copy-detail-ocr-text"
                       onClick={handleCopyOcr}
                       className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
                     >

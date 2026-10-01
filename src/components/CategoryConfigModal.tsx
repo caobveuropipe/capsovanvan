@@ -182,7 +182,10 @@ export const CategoryConfigModal: React.FC<CategoryConfigModalProps> = ({
       id="category-config-modal-overlay"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto"
     >
-      <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
+      <div
+        id="category-config-modal-card"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+      >
         {/* Header */}
         <div className="px-3.5 sm:px-6 py-3 sm:py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -478,6 +481,7 @@ export const CategoryConfigModal: React.FC<CategoryConfigModalProps> = ({
                       </button>
                     </div>
                     <input
+                      id="input-category-format-template"
                       type="text"
                       disabled={!isEditing}
                       value={

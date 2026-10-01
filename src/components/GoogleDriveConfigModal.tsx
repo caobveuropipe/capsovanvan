@@ -220,8 +220,14 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl shadow-blue-900/20 overflow-hidden my-6">
+    <div
+      id="google-drive-modal-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in overflow-y-auto"
+    >
+      <div
+        id="google-drive-modal-card"
+        className="relative w-full max-w-xl bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl shadow-blue-900/20 overflow-hidden my-6"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-3">
@@ -379,6 +385,7 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
                   Folder ID hoặc Đường dẫn (URL) thư mục Google Drive:
                 </label>
                 <input
+                  id="input-drive-folder-url"
                   type="text"
                   value={customFolderId}
                   onChange={(e) => {
@@ -434,6 +441,7 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
             Đóng
           </button>
           <button
+            id="btn-save-drive-settings"
             onClick={handleSaveSettings}
             className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-md shadow-blue-600/20 transition-all cursor-pointer"
           >
