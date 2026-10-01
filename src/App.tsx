@@ -39,6 +39,12 @@ import {
   DriveDatabasePayload,
   isDriveTokenExpired,
 } from "./services/googleDriveService";
+import {
+  initRealtime,
+  broadcastDocumentChange,
+  updateRealtimeFolder,
+  setupVisibilityAndFocusSync,
+} from "./services/realtimeService";
 
 export default function App() {
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
@@ -244,6 +250,35 @@ export default function App() {
       }
     }
     initData();
+
+    // 1. Khởi tạo lắng nghe WebSocket Realtime hai chiều từ các thiết bị khác
+    const cleanupWs = initRealtime({
+      onDocumentChanged: (event) => {
+        // Tự động kéo dữ liệu mới nhất về trong im lặng
+        syncWithGoogleDrive(false);
+        if (event.changeType === "create" && event.docNumber) {
+          showToast(`⚡ Thiết bị khác vừa cấp số mới: ${event.docNumber}!`, "info");
+        } else if (event.changeType === "delete") {
+          showToast("⚡ Thiết bị khác vừa cập nhật/xóa văn bản!", "info");
+        } else if (event.changeType === "config") {
+          showToast("⚡ Thiết bị khác vừa cập nhật cấu hình phân loại!", "info");
+        }
+      },
+      getFolderId: () => getGoogleDriveConfig().folderId || "",
+    });
+
+    // 2. Lắng nghe sự kiện bật sáng màn hình điện thoại / chuyển tab (Tab-Focus Catch-up Sync)
+    const cleanupFocus = setupVisibilityAndFocusSync(() => {
+      const cfg = getGoogleDriveConfig();
+      if (cfg.accessToken && !isDriveTokenExpired(cfg)) {
+        syncWithGoogleDrive(false);
+      }
+    });
+
+    return () => {
+      cleanupWs();
+      cleanupFocus();
+    };
   }, []);
 
   // Category changes handler
@@ -251,7 +286,14 @@ export default function App() {
     setCategories(updated);
     saveCategories(updated);
     const curDocs = await getAllDocuments();
-    pushLocalDbToDrive(updated, curDocs);
+    await pushLocalDbToDrive(updated, curDocs);
+
+    // Bắn tín hiệu Realtime cho các thiết bị khác
+    const currentDriveConfig = getGoogleDriveConfig();
+    broadcastDocumentChange({
+      changeType: "config",
+      folderId: currentDriveConfig.folderId,
+    });
   };
 
   // New Document Created handler (Includes BYOS Google Drive upload)
@@ -327,6 +369,13 @@ export default function App() {
 
     // Đồng bộ ngay số đếm và sổ văn bản mới lên file database Google Drive
     await pushLocalDbToDrive(updatedCats, updatedDocs);
+
+    // Bắn tín hiệu Realtime tức thời tới các thiết bị khác (Mobile/PC)
+    broadcastDocumentChange({
+      changeType: "create",
+      docNumber: docToSave.docNumber,
+      folderId: currentDriveConfig.folderId,
+    });
   };
 
   // Document Deleted handler (Sync delete from Google Drive + show Toast)
@@ -335,14 +384,31 @@ export default function App() {
       const docToDelete = await getDocumentById(id);
       const currentDriveConfig = getGoogleDriveConfig();
 
-      if (docToDelete?.driveFileId && currentDriveConfig.accessToken) {
-        showToast(`Đang xóa tệp ${docToDelete.docNumber} trên Google Drive...`, "info");
-        await deleteFileFromGoogleDrive(currentDriveConfig.accessToken, docToDelete.driveFileId);
+      // 1. Thử xóa file lẻ trên Google Drive (nếu có và token còn hạn)
+      if (docToDelete?.driveFileId && currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
+        try {
+          showToast(`Đang dọn dẹp tệp ${docToDelete.docNumber} trên Google Drive...`, "info");
+          await deleteFileFromGoogleDrive(currentDriveConfig.accessToken, docToDelete.driveFileId);
+        } catch (delErr) {
+          console.warn("Tệp trên Google Drive không còn tồn tại hoặc đã được dọn dẹp trước:", delErr);
+        }
       }
 
+      // 2. Xóa khỏi cơ sở dữ liệu nội bộ
       await deleteDocument(id);
       const updatedDocs = await getAllDocuments();
       setDocuments(updatedDocs);
+
+      // 3. Cập nhật ngay lập tức sổ văn bản đã xóa lên file database Google Drive
+      if (currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
+        await pushLocalDbToDrive(categories, updatedDocs);
+      }
+
+      // 4. Bắn tín hiệu Realtime tức thời tới các thiết bị khác
+      broadcastDocumentChange({
+        changeType: "delete",
+        folderId: currentDriveConfig.folderId,
+      });
 
       showToast(
         `Đã xóa văn bản ${docToDelete?.docNumber || id} khỏi sổ đăng ký và dọn dẹp Google Drive.`,
@@ -535,6 +601,7 @@ export default function App() {
         onClose={() => setIsGoogleDriveOpen(false)}
         onConfigUpdated={(cfg) => {
           setDriveConfig(cfg);
+          updateRealtimeFolder(cfg.folderId || "");
           if (cfg.accessToken) {
             syncWithGoogleDrive(true);
           }

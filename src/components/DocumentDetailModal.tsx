@@ -281,20 +281,30 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                     />
                   ) : doc.driveFileId ? (
                     /* Trực tiếp nhúng bản xem trước PDF từ Google Drive qua Google Drive Viewer */
-                    <iframe
-                      src={`https://drive.google.com/file/d/${doc.driveFileId}/preview`}
-                      title={`Xem trước tài liệu ${doc.docNumber}`}
-                      className="w-full h-full min-h-[460px] rounded-lg border border-slate-700 bg-white"
-                      allow="autoplay"
-                    />
+                    <div className="w-full h-full flex flex-col items-center">
+                      <iframe
+                        src={`https://drive.google.com/file/d/${doc.driveFileId}/preview`}
+                        title={`Xem trước tài liệu ${doc.docNumber}`}
+                        className="w-full flex-1 min-h-[440px] rounded-lg border border-slate-700 bg-white"
+                        allow="autoplay"
+                      />
+                      <p className="text-[11px] text-slate-400 mt-2 text-center">
+                        * Tệp đang được xem trước từ Google Drive. Bạn có thể xem toàn văn trích xuất OCR ở tab bên phải.
+                      </p>
+                    </div>
                   ) : doc.driveWebViewLink ? (
                     /* Nhúng qua Google Drive Preview URL */
-                    <iframe
-                      src={doc.driveWebViewLink.replace(/\/view(\?.*)?$/, "/preview")}
-                      title={`Xem trước tài liệu ${doc.docNumber}`}
-                      className="w-full h-full min-h-[460px] rounded-lg border border-slate-700 bg-white"
-                      allow="autoplay"
-                    />
+                    <div className="w-full h-full flex flex-col items-center">
+                      <iframe
+                        src={doc.driveWebViewLink.replace(/\/view(\?.*)?$/, "/preview")}
+                        title={`Xem trước tài liệu ${doc.docNumber}`}
+                        className="w-full flex-1 min-h-[440px] rounded-lg border border-slate-700 bg-white"
+                        allow="autoplay"
+                      />
+                      <p className="text-[11px] text-slate-400 mt-2 text-center">
+                        * Tệp đang được xem trước từ Google Drive. Bạn có thể xem toàn văn trích xuất OCR ở tab bên phải.
+                      </p>
+                    </div>
                   ) : (
                     <div className="text-slate-400 text-xs">Không có dữ liệu xem trước tệp PDF</div>
                   )}

@@ -1,6 +1,8 @@
 import express from "express";
+import http from "http";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import { WebSocketServer, WebSocket } from "ws";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
@@ -8,6 +10,90 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+// Create HTTP server wrapping Express
+const server = http.createServer(app);
+
+// WebSocket Server for instant multi-device realtime synchronization
+interface CustomWebSocket extends WebSocket {
+  isAlive?: boolean;
+  folderId?: string;
+  clientId?: string;
+}
+
+const wss = new WebSocketServer({ noServer: true });
+
+server.on("upgrade", (request, socket, head) => {
+  try {
+    const url = new URL(request.url || "", `http://${request.headers.host}`);
+    if (url.pathname === "/api/realtime") {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+      return;
+    }
+  } catch (err) {
+    socket.destroy();
+  }
+});
+
+wss.on("connection", (ws: CustomWebSocket) => {
+  ws.isAlive = true;
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
+
+  ws.on("message", (rawMessage) => {
+    try {
+      const msg = JSON.parse(rawMessage.toString());
+      if (msg.action === "join") {
+        ws.folderId = msg.folderId || "";
+        ws.clientId = msg.clientId || "";
+        ws.send(JSON.stringify({ type: "joined", folderId: ws.folderId }));
+      } else if (msg.action === "notify_change") {
+        // Broadcast to other connected clients
+        const payload = JSON.stringify({
+          type: "DOCUMENT_CHANGED",
+          folderId: msg.folderId,
+          changeType: msg.changeType, // "create" | "update" | "delete" | "config"
+          docNumber: msg.docNumber,
+          senderId: msg.clientId,
+          timestamp: new Date().toISOString(),
+        });
+
+        wss.clients.forEach((client) => {
+          const c = client as CustomWebSocket;
+          if (c !== ws && c.readyState === WebSocket.OPEN) {
+            // Forward if both are in same folder or folder is not partitioned
+            if (!msg.folderId || !c.folderId || c.folderId === msg.folderId) {
+              c.send(payload);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.error("WS message parse error:", e);
+    }
+  });
+
+  ws.on("error", (err) => {
+    console.warn("WebSocket client error:", err.message);
+  });
+});
+
+// Periodic heartbeat ping to clean up disconnected/dead clients
+const pingInterval = setInterval(() => {
+  wss.clients.forEach((client) => {
+    const ws = client as CustomWebSocket;
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+
+wss.on("close", () => {
+  clearInterval(pingInterval);
+});
 
 // High limit for base64 scanned documents and camera photos
 app.use(express.json({ limit: "50mb" }));
@@ -268,8 +354,8 @@ async function start() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Document Numbering & Management Server running at http://localhost:${PORT}`);
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Document Numbering & Management Server running at http://localhost:${PORT} (WebSocket Realtime active on /api/realtime)`);
   });
 }
 
