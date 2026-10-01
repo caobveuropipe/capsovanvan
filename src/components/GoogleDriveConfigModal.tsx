@@ -318,11 +318,11 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
   return (
     <div
       id="google-drive-modal-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 pb-[76px] sm:pb-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in overflow-y-auto"
     >
       <div
         id="google-drive-modal-card"
-        className="relative w-full max-w-xl bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl shadow-blue-900/20 overflow-hidden my-6"
+        className="relative w-full max-w-xl bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl shadow-blue-900/20 overflow-hidden my-auto max-h-[calc(100dvh-85px)] sm:max-h-[90vh] flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">

@@ -354,6 +354,57 @@ export default function App() {
     }
   };
 
+  // Active modal detection for bottom nav highlight on mobile
+  const activeModal: "intake" | "config" | "drive" | "detail" | "print" | null =
+    isIntakeOpen
+      ? "intake"
+      : isConfigOpen
+      ? "config"
+      : isGoogleDriveOpen
+      ? "drive"
+      : selectedDocForDetail
+      ? "detail"
+      : selectedDocForPrint
+      ? "print"
+      : null;
+
+  const closeAllModals = () => {
+    setIsIntakeOpen(false);
+    setIsConfigOpen(false);
+    setIsGoogleDriveOpen(false);
+    setSelectedDocForDetail(null);
+    setSelectedDocForPrint(null);
+  };
+
+  const handleMobileTabChange = (tab: "archive" | "stats") => {
+    closeAllModals();
+    setCurrentTab(tab);
+  };
+
+  const handleMobileOpenIntake = () => {
+    setIsConfigOpen(false);
+    setIsGoogleDriveOpen(false);
+    setSelectedDocForDetail(null);
+    setSelectedDocForPrint(null);
+    setIsIntakeOpen(true);
+  };
+
+  const handleMobileOpenConfig = () => {
+    setIsIntakeOpen(false);
+    setIsGoogleDriveOpen(false);
+    setSelectedDocForDetail(null);
+    setSelectedDocForPrint(null);
+    setIsConfigOpen(true);
+  };
+
+  const handleMobileOpenGoogleDrive = () => {
+    setIsIntakeOpen(false);
+    setIsConfigOpen(false);
+    setSelectedDocForDetail(null);
+    setSelectedDocForPrint(null);
+    setIsGoogleDriveOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       {/* Top Navigation */}
@@ -462,13 +513,14 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile Bottom Navigation (Floating on Mobile) */}
+      {/* Mobile Bottom Navigation (Luôn hiển thị cố định ở chân trang trên Mobile cho mọi màn hình) */}
       <MobileBottomNav
         currentTab={currentTab}
-        onTabChange={setCurrentTab}
-        onOpenIntake={() => setIsIntakeOpen(true)}
-        onOpenConfig={() => setIsConfigOpen(true)}
-        onOpenGoogleDrive={() => setIsGoogleDriveOpen(true)}
+        activeModal={activeModal}
+        onTabChange={handleMobileTabChange}
+        onOpenIntake={handleMobileOpenIntake}
+        onOpenConfig={handleMobileOpenConfig}
+        onOpenGoogleDrive={handleMobileOpenGoogleDrive}
         onSyncDrive={() => syncWithGoogleDrive(true)}
         isDriveConnected={!!driveConfig.accessToken}
         isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
@@ -530,7 +582,7 @@ export default function App() {
 
       {/* Floating Toast Notification */}
       {toastNotification && (
-        <div className="fixed bottom-6 right-6 z-50 animate-bounce-in max-w-md">
+        <div className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-[80] animate-bounce-in max-w-md">
           <div
             className={`px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 text-xs font-medium backdrop-blur-md ${
               toastNotification.type === "success"

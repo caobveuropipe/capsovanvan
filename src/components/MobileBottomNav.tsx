@@ -11,6 +11,7 @@ import {
 
 interface MobileBottomNavProps {
   currentTab: "archive" | "stats";
+  activeModal?: "intake" | "config" | "drive" | "detail" | "print" | null;
   onTabChange: (tab: "archive" | "stats") => void;
   onOpenIntake: () => void;
   onOpenConfig: () => void;
@@ -24,6 +25,7 @@ interface MobileBottomNavProps {
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   currentTab,
+  activeModal,
   onTabChange,
   onOpenIntake,
   onOpenConfig,
@@ -34,10 +36,16 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   isSyncing = false,
   totalDocsCount,
 }) => {
+  const isArchiveActive = !activeModal && currentTab === "archive";
+  const isStatsActive = !activeModal && currentTab === "stats";
+  const isIntakeActive = activeModal === "intake";
+  const isConfigActive = activeModal === "config";
+  const isDriveActive = activeModal === "drive";
+
   return (
     <nav
       id="mobile-bottom-navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 text-white shadow-[0_-4px_20px_rgba(0,0,0,0.3)] px-2 py-1 pb-safe flex items-center justify-between"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[70] print:hidden bg-slate-900/95 backdrop-blur-md border-t border-slate-800 text-white shadow-[0_-4px_20px_rgba(0,0,0,0.4)] px-2 py-1 pb-safe flex items-center justify-between"
     >
       {/* 1. Kho lưu trữ Tab */}
       <button
@@ -45,7 +53,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         id="mobile-nav-archive"
         onClick={() => onTabChange("archive")}
         className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all flex-1 min-h-[48px] cursor-pointer ${
-          currentTab === "archive"
+          isArchiveActive
             ? "text-blue-400 font-bold bg-blue-500/10"
             : "text-slate-400 hover:text-slate-200"
         }`}
@@ -67,7 +75,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         id="mobile-nav-stats"
         onClick={() => onTabChange("stats")}
         className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all flex-1 min-h-[48px] cursor-pointer ${
-          currentTab === "stats"
+          isStatsActive
             ? "text-blue-400 font-bold bg-blue-500/10"
             : "text-slate-400 hover:text-slate-200"
         }`}
@@ -83,10 +91,22 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         onClick={onOpenIntake}
         className="flex flex-col items-center justify-center -mt-4 px-1 group cursor-pointer"
       >
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 group-hover:from-blue-500 group-hover:to-indigo-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/40 ring-4 ring-slate-900 transform active:scale-95 transition-all">
+        <div
+          className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition-all transform active:scale-95 ${
+            isIntakeActive
+              ? "bg-gradient-to-tr from-blue-500 to-indigo-500 text-white shadow-blue-500/50 ring-4 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105"
+              : "bg-gradient-to-tr from-blue-600 to-indigo-600 group-hover:from-blue-500 group-hover:to-indigo-500 text-white shadow-blue-500/40 ring-4 ring-slate-900"
+          }`}
+        >
           <Plus className="w-6 h-6 stroke-[2.5]" />
         </div>
-        <span className="text-[9px] font-bold text-blue-400 mt-1 tracking-tight flex items-center gap-0.5">
+        <span
+          className={`text-[9px] mt-1 tracking-tight flex items-center gap-0.5 ${
+            isIntakeActive
+              ? "font-extrabold text-blue-300"
+              : "font-bold text-blue-400"
+          }`}
+        >
           <Sparkles className="w-2.5 h-2.5 text-blue-300" /> Cấp số
         </span>
       </button>
@@ -103,7 +123,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }
         }}
         className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all flex-1 min-h-[48px] cursor-pointer ${
-          isDriveConnected
+          isDriveActive
+            ? "text-blue-400 font-bold bg-blue-500/10"
+            : isDriveConnected
             ? isDriveTokenExpired
               ? "text-amber-400"
               : "text-emerald-400"
@@ -137,7 +159,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         type="button"
         id="mobile-nav-config"
         onClick={onOpenConfig}
-        className="flex flex-col items-center justify-center py-1 px-1.5 rounded-xl text-slate-400 hover:text-slate-200 flex-1 min-h-[48px] cursor-pointer"
+        className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all flex-1 min-h-[48px] cursor-pointer ${
+          isConfigActive
+            ? "text-blue-400 font-bold bg-blue-500/10"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
       >
         <Settings className="w-5 h-5" />
         <span className="text-[10px] mt-0.5">Cấu hình</span>
