@@ -22,6 +22,7 @@ import {
   getDocumentById,
   saveDocument,
   deleteDocument,
+  clearAllDocuments,
   seedInitialDocumentsIfEmpty,
   incrementCategoryCount,
 } from "./services/storage";
@@ -94,9 +95,8 @@ export default function App() {
         currentConfig.folderId
       );
 
-      // Nếu trong thư mục hiện tại không có file database, tìm thử trên toàn bộ Drive của user
-      // (Xử lý trường hợp điện thoại kết nối vào folder mới tạo nhầm thay vì folder gốc của PC)
-      if (!remoteDbFile) {
+      // Nếu người dùng chưa chọn thư mục cụ thể (hoặc đang là root) và chưa thấy file database, tìm thử trên toàn bộ Drive của user
+      if (!remoteDbFile && (!currentConfig.folderId || currentConfig.folderId === "root")) {
         const globalDbFile = await findDriveFileByName(
           currentConfig.accessToken,
           DRIVE_DB_FILENAME
@@ -142,27 +142,12 @@ export default function App() {
             setCategories(mergedCats);
           }
 
-          // Merge / Save documents into local IndexedDB
+          // Thay thế chuẩn xác 100% dữ liệu văn bản cục bộ bằng dữ liệu từ thư mục Google Drive đang kết nối
           if (Array.isArray(remoteData.documents)) {
+            // Xóa sạch bộ nhớ cục bộ để không bị lẫn lộn văn bản của thư mục cũ
+            await clearAllDocuments();
             for (const rDoc of remoteData.documents) {
-              const existingLocalDoc = await getDocumentById(rDoc.id);
-              if (existingLocalDoc && existingLocalDoc.images && existingLocalDoc.images.length > 0) {
-                // Giữ lại dataUrl gốc ở local IndexedDB nếu remote đã được bóc tách base64
-                const mergedImages = rDoc.images?.map((remImg: any, idx: number) => {
-                  const locImg = existingLocalDoc.images[idx];
-                  return {
-                    ...remImg,
-                    dataUrl: remImg.dataUrl || locImg?.dataUrl || "",
-                  };
-                }) || existingLocalDoc.images;
-
-                await saveDocument({
-                  ...rDoc,
-                  images: mergedImages,
-                });
-              } else {
-                await saveDocument(rDoc);
-              }
+              await saveDocument(rDoc);
             }
             const refreshedDocs = await getAllDocuments();
             setDocuments(refreshedDocs);

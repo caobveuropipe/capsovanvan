@@ -19,6 +19,14 @@ export interface GoogleDriveFileResult {
   thumbnailLink?: string;
 }
 
+export interface DriveFolderItem {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+  shared?: boolean;
+  isDatabaseHost?: boolean;
+}
+
 const STORAGE_KEY = "docnum_google_drive_config_v1";
 
 export const DEFAULT_GOOGLE_CLIENT_ID =
@@ -138,7 +146,7 @@ export async function uploadFileToGoogleDrive(
     form.append("file", blob);
 
     return await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,thumbnailLink",
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,thumbnailLink",
       {
         method: "POST",
         headers: {
@@ -181,7 +189,7 @@ export async function findDriveFolderByName(
     }
 
     // Sắp xếp createdTime asc để luôn lấy thư mục ĐẦU TIÊN đã tạo trên Drive của người dùng
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)&orderBy=createdTime asc&pageSize=10`;
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&orderBy=createdTime asc&pageSize=10`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -211,7 +219,7 @@ export async function findOrCreateDriveFolder(
     if (existingDb && existingDb.parents && existingDb.parents.length > 0) {
       const parentId = existingDb.parents[0];
       // Lấy thông tin folder cha của file database
-      const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files/${parentId}?fields=id,name`, {
+      const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files/${parentId}?fields=id,name&supportsAllDrives=true`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (folderRes.ok) {
@@ -268,13 +276,97 @@ export async function createDriveFolder(
   return await response.json();
 }
 
+// Lấy thông tin chi tiết thư mục (tên thật)
+export async function getDriveFolderDetails(
+  accessToken: string,
+  folderId: string
+): Promise<{ id: string; name: string } | null> {
+  try {
+    if (!folderId || folderId === "root") {
+      return { id: "root", name: "Google Drive (Thư mục gốc)" };
+    }
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,name&supportsAllDrives=true`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { id: data.id, name: data.name };
+  } catch (err) {
+    console.warn("Lỗi lấy thông tin thư mục Google Drive:", err);
+    return null;
+  }
+}
+
+// Liệt kê CHỈ các thư mục có chứa tệp tin vcc_documents_database.json trên Google Drive
+export async function listDriveFolders(
+  accessToken: string,
+  currentFolderId?: string
+): Promise<DriveFolderItem[]> {
+  try {
+    // 1. Quét các tệp database trên Google Drive (bao gồm cả thư mục được chia sẻ)
+    const dbQuery = `name = '${DRIVE_DB_FILENAME}' and trashed = false`;
+    const dbUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+      dbQuery
+    )}&fields=files(id,name,parents,modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&orderBy=modifiedTime desc&pageSize=20`;
+
+    const dbRes = await fetch(dbUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const folderMap = new Map<string, DriveFolderItem>();
+
+    if (dbRes.ok) {
+      const dbData = await dbRes.json();
+      const files: any[] = dbData.files || [];
+
+      // Với mỗi file database tìm thấy, lấy thư mục cha
+      for (const file of files) {
+        if (file.parents && file.parents.length > 0) {
+          const parentId = file.parents[0];
+          if (!folderMap.has(parentId)) {
+            const details = await getDriveFolderDetails(accessToken, parentId);
+            if (details) {
+              folderMap.set(parentId, {
+                id: details.id,
+                name: details.name,
+                modifiedTime: file.modifiedTime,
+                isDatabaseHost: true,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Nếu người dùng hiện đang kết nối 1 folder cụ thể mà folder đó chưa có trong map, vẫn hiển thị folder đó lên
+    if (currentFolderId && currentFolderId !== "root" && !folderMap.has(currentFolderId)) {
+      const currentDetails = await getDriveFolderDetails(accessToken, currentFolderId);
+      if (currentDetails) {
+        folderMap.set(currentFolderId, {
+          id: currentDetails.id,
+          name: currentDetails.name,
+          isDatabaseHost: false,
+        });
+      }
+    }
+
+    return Array.from(folderMap.values());
+  } catch (err) {
+    console.warn("Lỗi tìm kiếm các thư mục chứa database trên Google Drive:", err);
+    return [];
+  }
+}
+
 // Delete file from Google Drive
 export async function deleteFileFromGoogleDrive(
   accessToken: string,
   fileId: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -314,7 +406,7 @@ export async function findDriveFileByName(
     }
 
     // List all matches (sorted newest first)
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,parents,modifiedTime)&orderBy=modifiedTime desc&pageSize=10`;
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,parents,modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&orderBy=modifiedTime desc&pageSize=10`;
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -348,7 +440,7 @@ export async function readDatabaseFromGoogleDrive(
   fileId: string
 ): Promise<DriveDatabasePayload | null> {
   try {
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -423,7 +515,7 @@ export async function saveDatabaseToGoogleDrive(
   if (existingFile) {
     // Update existing file content directly via PATCH
     const res = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`,
+      `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media&supportsAllDrives=true`,
       {
         method: "PATCH",
         headers: {
@@ -457,7 +549,7 @@ export async function saveDatabaseToGoogleDrive(
     form.append("file", blob);
 
     const res = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name",
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name",
       {
         method: "POST",
         headers: {
