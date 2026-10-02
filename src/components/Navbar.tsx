@@ -19,8 +19,10 @@ interface NavbarProps {
   onOpenConfig: () => void;
   onOpenGoogleDrive?: () => void;
   onSyncDrive?: () => void;
+  onRenewDrive?: () => void;
   isDriveConnected?: boolean;
   isDriveTokenExpired?: boolean;
+  isRenewingDrive?: boolean;
   isSyncing?: boolean;
   totalDocsCount: number;
 }
@@ -32,8 +34,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenConfig,
   onOpenGoogleDrive,
   onSyncDrive,
+  onRenewDrive,
   isDriveConnected = false,
   isDriveTokenExpired = false,
+  isRenewingDrive = false,
   isSyncing = false,
   totalDocsCount,
 }) => {
@@ -130,6 +134,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </span>
                   )}
                 </button>
+
+                {/* Direct 1-Click Renew Button if Connected and Token Expired */}
+                {isDriveConnected && isDriveTokenExpired && onRenewDrive && (
+                  <button
+                    id="btn-quick-renew-google-drive"
+                    onClick={onRenewDrive}
+                    disabled={isRenewingDrive}
+                    className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs sm:text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 min-h-[38px] animate-pulse hover:animate-none"
+                    title="Gia hạn phiên Google Drive tức thì 1 chạm (Tự động nhận tài khoản cũ)"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRenewingDrive ? "animate-spin" : ""}`} />
+                    <span className="hidden xs:inline">Gia hạn 1 chạm</span>
+                    <span className="xs:hidden">Gia hạn</span>
+                  </button>
+                )}
 
                 {/* Direct Sync Button if Connected (and token not expired) */}
                 {isDriveConnected && !isDriveTokenExpired && onSyncDrive && (

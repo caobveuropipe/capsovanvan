@@ -17,6 +17,7 @@ interface MobileBottomNavProps {
   onOpenConfig: () => void;
   onOpenGoogleDrive?: () => void;
   onSyncDrive?: () => void;
+  onRenewDrive?: () => void;
   isDriveConnected?: boolean;
   isDriveTokenExpired?: boolean;
   isSyncing?: boolean;
@@ -31,6 +32,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenConfig,
   onOpenGoogleDrive,
   onSyncDrive,
+  onRenewDrive,
   isDriveConnected = false,
   isDriveTokenExpired = false,
   isSyncing = false,
@@ -118,6 +120,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         onClick={() => {
           if (isDriveConnected && !isDriveTokenExpired && onSyncDrive) {
             onSyncDrive();
+          } else if (isDriveConnected && isDriveTokenExpired && onRenewDrive) {
+            onRenewDrive();
           } else if (onOpenGoogleDrive) {
             onOpenGoogleDrive();
           }
@@ -127,11 +131,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             ? "text-blue-400 font-bold bg-blue-500/10"
             : isDriveConnected
             ? isDriveTokenExpired
-              ? "text-amber-400"
+              ? "text-amber-400 font-bold"
               : "text-emerald-400"
             : "text-slate-400 hover:text-slate-200"
         }`}
-        title="Google Drive Sync"
+        title={isDriveTokenExpired ? "Bấm để gia hạn phiên Google Drive 1 chạm" : "Google Drive Sync"}
       >
         <div className="relative">
           {isSyncing ? (
@@ -150,7 +154,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           />
         </div>
         <span className="text-[10px] mt-0.5">
-          {isSyncing ? "Đang đồng bộ" : isDriveConnected ? (isDriveTokenExpired ? "Hết hạn" : "Đồng bộ") : "Drive"}
+          {isSyncing ? "Đang đồng bộ" : isDriveConnected ? (isDriveTokenExpired ? "Gia hạn" : "Đồng bộ") : "Drive"}
         </span>
       </button>
 

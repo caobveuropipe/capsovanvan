@@ -81,6 +81,165 @@ export function isDriveTokenExpired(config: GoogleDriveConfig): boolean {
   return Date.now() >= config.tokenExpiresAt - 60000;
 }
 
+// Declare Google Identity Services global
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
+
+// Tải script Google Identity Services (GIS) nếu chưa tồn tại
+export function loadGisScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return resolve();
+    if (window.google?.accounts?.oauth2) {
+      return resolve();
+    }
+    const existingScript = document.getElementById("google-gis-script");
+    if (existingScript) {
+      existingScript.onload = () => resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "google-gis-script";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () =>
+      reject(new Error("Không thể tải Google Identity Services (GIS). Vui lòng kiểm tra kết nối mạng."));
+    document.body.appendChild(script);
+  });
+}
+
+export interface RequestTokenOptions {
+  clientId?: string;
+  hint?: string;
+  prompt?: "" | "consent" | "select_account";
+}
+
+export interface GoogleTokenResult {
+  accessToken: string;
+  expiresIn: number;
+  expiresAt: number;
+}
+
+export interface GoogleUserProfile {
+  email: string;
+  name: string;
+  picture?: string;
+}
+
+// Lấy Access Token từ Google Identity Services với hỗ trợ hint và prompt
+export async function requestGoogleAccessToken(
+  options?: RequestTokenOptions
+): Promise<GoogleTokenResult> {
+  await loadGisScript();
+
+  if (!window.google?.accounts?.oauth2) {
+    throw new Error("Dịch vụ Google Identity Services chưa sẵn sàng.");
+  }
+
+  const currentConfig = getGoogleDriveConfig();
+  const clientId = (options?.clientId || currentConfig.clientId || DEFAULT_GOOGLE_CLIENT_ID).trim();
+  if (!clientId) {
+    throw new Error("Thiếu Google Client ID.");
+  }
+
+  const hint = options?.hint || currentConfig.userEmail;
+  // Nếu đã có hint (email) và không chỉ định prompt cụ thể, dùng "" để không bắt hỏi lại consent
+  const prompt = options?.prompt !== undefined ? options.prompt : (hint ? "" : "consent");
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope:
+          "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+        callback: (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            const errDetail = tokenResponse.error_description || tokenResponse.error;
+            return reject(new Error(`Lỗi ủy quyền Google: ${errDetail}`));
+          }
+          const accessToken = tokenResponse.access_token;
+          const expiresIn = parseInt(tokenResponse.expires_in || "3600", 10);
+          const expiresAt = Date.now() + expiresIn * 1000;
+          resolve({ accessToken, expiresIn, expiresAt });
+        },
+        error_callback: (nonOAuthErr: any) => {
+          reject(new Error(nonOAuthErr?.message || "Lỗi khởi tạo token client của Google"));
+        },
+      });
+
+      const requestArgs: any = {};
+      if (prompt !== undefined) {
+        requestArgs.prompt = prompt;
+      }
+      if (hint) {
+        requestArgs.hint = hint;
+      }
+
+      tokenClient.requestAccessToken(requestArgs);
+    } catch (e: any) {
+      reject(e);
+    }
+  });
+}
+
+// Lấy profile người dùng từ Google
+export async function fetchGoogleUserProfile(accessToken: string): Promise<GoogleUserProfile> {
+  const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!userRes.ok) {
+    throw new Error("Không thể lấy thông tin người dùng từ Google");
+  }
+  return (await userRes.json()) as GoogleUserProfile;
+}
+
+// Gia hạn phiên làm việc Google Drive (1 chạm) - Giữ nguyên tuyệt đối Folder ID và Email đã nhớ
+export async function renewGoogleDriveSession(options?: {
+  prompt?: "" | "consent" | "select_account";
+}): Promise<GoogleDriveConfig> {
+  const currentConfig = getGoogleDriveConfig();
+  if (!currentConfig.userEmail) {
+    throw new Error("Chưa có tài khoản Google nào được liên kết trước đó để gia hạn.");
+  }
+
+  let tokenResult: GoogleTokenResult;
+  try {
+    tokenResult = await requestGoogleAccessToken({
+      clientId: currentConfig.clientId,
+      hint: currentConfig.userEmail,
+      prompt: options?.prompt !== undefined ? options.prompt : "",
+    });
+  } catch (err: any) {
+    // Nếu prompt: "" bị lỗi vì cần tương tác lại từ người dùng, thử lại với select_account
+    if (
+      options?.prompt === undefined &&
+      (err.message?.includes("interaction_required") || err.message?.includes("immediate_failed"))
+    ) {
+      tokenResult = await requestGoogleAccessToken({
+        clientId: currentConfig.clientId,
+        hint: currentConfig.userEmail,
+        prompt: "select_account",
+      });
+    } else {
+      throw err;
+    }
+  }
+
+  // Bảo toàn 100% các cấu hình quan trọng đã lưu: folderId, folderName, userEmail, userName...
+  const updatedConfig: GoogleDriveConfig = {
+    ...currentConfig,
+    accessToken: tokenResult.accessToken,
+    tokenExpiresAt: tokenResult.expiresAt,
+  };
+
+  saveGoogleDriveConfig(updatedConfig);
+  return updatedConfig;
+}
+
 // Convert Base64 or URL-encoded dataURL to Blob safely
 export function dataURLtoBlob(dataurl: string): Blob {
   if (!dataurl) {

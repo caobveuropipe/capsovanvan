@@ -39,6 +39,7 @@ import {
   DRIVE_DB_FILENAME,
   DriveDatabasePayload,
   isDriveTokenExpired,
+  renewGoogleDriveSession,
 } from "./services/googleDriveService";
 import {
   initRealtime,
@@ -61,6 +62,7 @@ export default function App() {
   const [selectedDocForPrint, setSelectedDocForPrint] = useState<DocumentRecord | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDriveSyncing, setIsDriveSyncing] = useState<boolean>(false);
+  const [isDriveRenewing, setIsDriveRenewing] = useState<boolean>(false);
 
   // Toast Notification state
   const [toastNotification, setToastNotification] = useState<{
@@ -204,6 +206,29 @@ export default function App() {
       }
     } finally {
       setIsDriveSyncing(false);
+    }
+  };
+
+  // Gia hạn phiên làm việc Google Drive 1 chạm (Tự động nhận diện tài khoản cũ, không hỏi lại quyền)
+  const handleRenewDriveSession = async () => {
+    setIsDriveRenewing(true);
+    try {
+      const updated = await renewGoogleDriveSession();
+      setDriveConfig(updated);
+      showToast(`Đã gia hạn phiên Google Drive (${updated.userEmail}) thành công!`, "success");
+      // Tự động kéo dữ liệu mới nhất về ngay sau khi gia hạn
+      setTimeout(() => {
+        syncWithGoogleDrive(false);
+      }, 500);
+    } catch (err: any) {
+      console.warn("Lỗi gia hạn phiên Google Drive:", err);
+      showToast(
+        `Chưa thể gia hạn tự động: ${err.message || "Vui lòng mở cài đặt Drive để kết nối lại"}.`,
+        "error"
+      );
+      setIsGoogleDriveOpen(true);
+    } finally {
+      setIsDriveRenewing(false);
     }
   };
 
@@ -489,8 +514,10 @@ export default function App() {
         onOpenConfig={() => setIsConfigOpen(true)}
         onOpenGoogleDrive={() => setIsGoogleDriveOpen(true)}
         onSyncDrive={() => syncWithGoogleDrive(true)}
+        onRenewDrive={handleRenewDriveSession}
         isDriveConnected={!!driveConfig.userEmail}
         isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
+        isRenewingDrive={isDriveRenewing}
         isSyncing={isDriveSyncing}
         totalDocsCount={documents.length}
       />
@@ -596,7 +623,8 @@ export default function App() {
         onOpenConfig={handleMobileOpenConfig}
         onOpenGoogleDrive={handleMobileOpenGoogleDrive}
         onSyncDrive={() => syncWithGoogleDrive(true)}
-        isDriveConnected={!!driveConfig.accessToken}
+        onRenewDrive={handleRenewDriveSession}
+        isDriveConnected={!!driveConfig.userEmail}
         isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
         isSyncing={isDriveSyncing}
         totalDocsCount={documents.length}
