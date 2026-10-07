@@ -26,6 +26,10 @@ import {
   seedInitialDocumentsIfEmpty,
   incrementCategoryCount,
   reconcileCategoryCounts,
+  getTombstones,
+  addTombstone,
+  updateTombstone,
+  pruneTombstones,
 } from "./services/storage";
 import {
   getGoogleDriveConfig,
@@ -34,8 +38,11 @@ import {
   uploadFileToGoogleDrive,
   deleteFileFromGoogleDrive,
   findDriveFileByName,
+  resolveCanonicalDriveDatabase,
   readDatabaseFromGoogleDrive,
   saveDatabaseToGoogleDrive,
+  saveDatabaseWithConflictResolution,
+  mergeDocumentsAndTombstones,
   DRIVE_DB_FILENAME,
   DriveDatabasePayload,
   isDriveTokenExpired,
@@ -46,6 +53,7 @@ import {
   broadcastDocumentChange,
   updateRealtimeFolder,
   setupVisibilityAndFocusSync,
+  resetRealtimeCircuitBreaker,
 } from "./services/realtimeService";
 
 export default function App() {
@@ -87,6 +95,11 @@ export default function App() {
       return;
     }
 
+    // Reset circuit breaker nếu người dùng chủ động bấm đồng bộ thủ công (EFR-05)
+    if (isManual) {
+      resetRealtimeCircuitBreaker();
+    }
+
     // Nếu token đã hết hạn, không gửi request nền để tránh báo lỗi đỏ 401 trên console
     if (isDriveTokenExpired(currentConfig)) {
       if (isManual) {
@@ -97,33 +110,30 @@ export default function App() {
 
     setIsDriveSyncing(true);
     try {
-      // 1. Check if database file exists on Google Drive in current folder
-      let remoteDbFile = await findDriveFileByName(
+      // 1. Phân giải Canonical File qua resolveCanonicalDriveDatabase (tự động reconcile nếu có duplicate - EFR-21 & EFR-22)
+      let canonicalDbFile = await resolveCanonicalDriveDatabase(
         currentConfig.accessToken,
-        DRIVE_DB_FILENAME,
         currentConfig.folderId
       );
 
-      // Nếu người dùng chưa chọn thư mục cụ thể (hoặc đang là root) và chưa thấy file database, tìm thử trên toàn bộ Drive của user
-      if (!remoteDbFile && (!currentConfig.folderId || currentConfig.folderId === "root")) {
-        const globalDbFile = await findDriveFileByName(
-          currentConfig.accessToken,
-          DRIVE_DB_FILENAME
+      // Nếu người dùng chưa chọn thư mục cụ thể (hoặc đang là root) và chưa thấy file, tìm thử trên toàn bộ Drive
+      if (!canonicalDbFile && (!currentConfig.folderId || currentConfig.folderId === "root")) {
+        const globalDbFile = await resolveCanonicalDriveDatabase(
+          currentConfig.accessToken
         );
         if (globalDbFile && globalDbFile.parents && globalDbFile.parents.length > 0) {
-          remoteDbFile = globalDbFile;
+          canonicalDbFile = globalDbFile;
           const recoveredFolderId = globalDbFile.parents[0];
-          // Tự động khôi phục cấu hình về đúng folder chứa database
           currentConfig.folderId = recoveredFolderId;
           saveGoogleDriveConfig(currentConfig);
         }
       }
 
-      if (remoteDbFile) {
+      if (canonicalDbFile) {
         // Read remote database
         const remoteData = await readDatabaseFromGoogleDrive(
           currentConfig.accessToken,
-          remoteDbFile.id
+          canonicalDbFile.id
         );
 
         if (remoteData) {
@@ -135,12 +145,10 @@ export default function App() {
               if (!lCat) return rCat;
               return {
                 ...rCat,
-                // Lấy số đếm lớn nhất giữa 2 thiết bị để tránh cấp trùng số
                 currentCount: Math.max(rCat.currentCount || 0, lCat.currentCount || 0),
               };
             });
 
-            // Bổ sung các danh mục mới chỉ có ở local (nếu có)
             for (const lCat of localCats) {
               if (!mergedCats.some((c: DocumentCategory) => c.id === lCat.id || c.code.toUpperCase() === lCat.code.toUpperCase())) {
                 mergedCats.push(lCat);
@@ -151,23 +159,49 @@ export default function App() {
             setCategories(mergedCats);
           }
 
-          // Thay thế chuẩn xác 100% dữ liệu văn bản cục bộ bằng dữ liệu từ thư mục Google Drive đang kết nối
+          // Lấy tombstones cả từ remote và local (Tombstone-Wins toàn diện - EFR-20)
+          const localTombstones = getTombstones();
+          const remoteDeletedRecords = Array.isArray(remoteData.deletedRecords) ? remoteData.deletedRecords : [];
+          
+          // Đồng bộ các tombstone mới từ remote vào local
+          for (const remT of remoteDeletedRecords) {
+            const existsLocally = localTombstones.some((lt) => lt.id === remT.id);
+            if (!existsLocally) {
+              addTombstone({
+                id: remT.id,
+                deletedAt: remT.deletedAt,
+                registrySynced: true,
+                assetCleaned: true,
+              });
+            }
+          }
+
+          // Tập hợp tất cả ID đã xóa: remote ∪ local
+          const effectiveDeletedIds = new Set([
+            ...remoteDeletedRecords.map((r) => r.id),
+            ...getTombstones().map((t) => t.id),
+          ]);
+
+          // Lọc sạch documents theo Tombstone-Wins trước khi lưu IndexedDB
           if (Array.isArray(remoteData.documents)) {
-            // Xóa sạch bộ nhớ cục bộ để không bị lẫn lộn văn bản của thư mục cũ
+            const validDocs = remoteData.documents.filter((d: any) => !effectiveDeletedIds.has(d.id));
+            
             await clearAllDocuments();
-            for (const rDoc of remoteData.documents) {
+            for (const rDoc of validDocs) {
               await saveDocument(rDoc);
             }
             const refreshedDocs = await getAllDocuments();
-            // Tự động cân chỉnh bộ đếm categories theo các văn bản thực tế tải về
             const reconciledCats = reconcileCategoryCounts(refreshedDocs);
             setDocuments(refreshedDocs);
             setCategories(reconciledCats);
           }
 
+          // Dọn dẹp định kỳ các tombstone cũ
+          pruneTombstones();
+
           if (isManual) {
             showToast(
-              `Đã tải và đồng bộ thành công dữ liệu từ Google Drive (${remoteData.documents.length} văn bản).`,
+              `Đã tải và đồng bộ thành công dữ liệu từ Google Drive (${remoteData.documents?.length || 0} văn bản).`,
               "success"
             );
           }
@@ -176,17 +210,35 @@ export default function App() {
         // If file doesn't exist on Google Drive yet, push current local state to Google Drive as initial DB
         const localCats = getCategories();
         const localDocs = await getAllDocuments();
-        const payload: DriveDatabasePayload = {
+        const localTombstones = getTombstones();
+        const effectiveDeletedIds = new Set(localTombstones.map((t) => t.id));
+        const filteredDocs = localDocs.filter((d) => !effectiveDeletedIds.has(d.id));
+
+        await saveDatabaseWithConflictResolution(currentConfig.accessToken, currentConfig.folderId, () => ({
           version: 1,
           lastUpdated: new Date().toISOString(),
           updatedBy: currentConfig.userEmail,
           categories: localCats,
-          documents: localDocs,
-        };
+          documents: filteredDocs,
+          deletedRecords: localTombstones.map((t) => ({ id: t.id, deletedAt: t.deletedAt })),
+        }));
 
-        await saveDatabaseToGoogleDrive(currentConfig.accessToken, currentConfig.folderId, payload);
         if (isManual) {
           showToast("Đã khởi tạo kho dữ liệu dùng chung trên Google Drive thành công!", "success");
+        }
+      }
+
+      // Quét dọn dẹp các asset file còn tồn đọng (assetCleaned === false)
+      const pendingTombstones = getTombstones().filter((t) => !t.assetCleaned && t.driveFileId);
+      for (const pt of pendingTombstones) {
+        if (pt.driveFileId) {
+          deleteFileFromGoogleDrive(currentConfig.accessToken, pt.driveFileId, currentConfig.folderId)
+            .then((cleaned) => {
+              if (cleaned) updateTombstone(pt.id, { assetCleaned: true });
+            })
+            .catch((err: any) => {
+              if (err?.status === 404) updateTombstone(pt.id, { assetCleaned: true });
+            });
         }
       }
     } catch (syncErr: any) {
@@ -232,20 +284,44 @@ export default function App() {
     }
   };
 
-  // Push local DB to Google Drive
+  // Push local DB to Google Drive (with Tombstone-Wins & CAS Conflict Resolution - Task 3.4)
   const pushLocalDbToDrive = async (updatedCats: DocumentCategory[], updatedDocs: DocumentRecord[]) => {
     const currentConfig = getGoogleDriveConfig();
     if (!currentConfig.accessToken || isDriveTokenExpired(currentConfig)) return;
 
     try {
-      const payload: DriveDatabasePayload = {
-        version: 1,
-        lastUpdated: new Date().toISOString(),
-        updatedBy: currentConfig.userEmail,
-        categories: updatedCats,
-        documents: updatedDocs,
-      };
-      await saveDatabaseToGoogleDrive(currentConfig.accessToken, currentConfig.folderId, payload);
+      const localTombstones = getTombstones();
+      const deletedIds = new Set(localTombstones.map((t) => t.id));
+      const cleanDocs = updatedDocs.filter((d) => !deletedIds.has(d.id));
+
+      await saveDatabaseWithConflictResolution(currentConfig.accessToken, currentConfig.folderId, (current) => {
+        if (!current) {
+          return {
+            version: 1,
+            lastUpdated: new Date().toISOString(),
+            updatedBy: currentConfig.userEmail,
+            categories: updatedCats,
+            documents: cleanDocs,
+            deletedRecords: localTombstones.map((t) => ({ id: t.id, deletedAt: t.deletedAt })),
+          };
+        }
+
+        const merged = mergeDocumentsAndTombstones(
+          current.documents || [],
+          cleanDocs,
+          current.deletedRecords || [],
+          localTombstones.map((t) => ({ id: t.id, deletedAt: t.deletedAt }))
+        );
+
+        return {
+          ...current,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentConfig.userEmail,
+          categories: updatedCats,
+          documents: merged.documents,
+          deletedRecords: merged.deletedRecords,
+        };
+      });
     } catch (err: any) {
       const errMsg = err.message || "";
       if (errMsg.includes("invalid authentication") || errMsg.includes("401") || errMsg.includes("Invalid Credentials")) {
@@ -343,39 +419,52 @@ export default function App() {
       } else {
         showToast("Đang đồng bộ bản scan lên Google Drive...", "info");
         try {
-          const primaryImg = docToSave.images[0];
-          // Lấy đúng phần mở rộng gốc của tệp (ví dụ .pdf, .docx, .png, .jpg...)
-          let ext = "pdf";
-          if (primaryImg.name && primaryImg.name.includes(".")) {
-            ext = primaryImg.name.split(".").pop()?.toLowerCase() || "pdf";
-          } else if (primaryImg.mimeType) {
-            if (primaryImg.mimeType.includes("pdf")) ext = "pdf";
-            else if (primaryImg.mimeType.includes("png")) ext = "png";
-            else if (primaryImg.mimeType.includes("jpeg") || primaryImg.mimeType.includes("jpg")) ext = "jpg";
+          const safeTitle = docToSave.title.replace(/[\/\\:?*"<>|]/g, "_").slice(0, 40).trim();
+          let primaryResult: any = null;
+
+          // Tải toàn bộ các trang ảnh lên Google Drive (hỗ trợ nhiều trang chụp camera hoặc tải tệp)
+          for (let i = 0; i < docToSave.images.length; i++) {
+            const curImg = docToSave.images[i];
+            let ext = "jpg";
+            if (curImg.name && curImg.name.includes(".")) {
+              ext = curImg.name.split(".").pop()?.toLowerCase() || "jpg";
+            } else if (curImg.mimeType) {
+              if (curImg.mimeType.includes("pdf")) ext = "pdf";
+              else if (curImg.mimeType.includes("png")) ext = "png";
+              else if (curImg.mimeType.includes("jpeg") || curImg.mimeType.includes("jpg")) ext = "jpg";
+            }
+
+            const pageSuffix = docToSave.images.length > 1 ? `_trang${i + 1}` : "";
+            const cleanDocName = `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}${pageSuffix}.${ext}`;
+
+            const driveResult = await uploadFileToGoogleDrive(
+              currentDriveConfig.accessToken,
+              currentDriveConfig.folderId,
+              cleanDocName,
+              curImg.dataUrl,
+              `Văn bản số ${docToSave.docNumber}${docToSave.images.length > 1 ? ` (Trang ${i + 1}/${docToSave.images.length})` : ""}: ${docToSave.title}`
+            );
+
+            if (i === 0) {
+              primaryResult = driveResult;
+              docToSave.driveFileId = driveResult.id;
+              docToSave.driveWebViewLink = driveResult.webViewLink;
+              docToSave.driveThumbnailLink = driveResult.thumbnailLink;
+            }
           }
 
-          const safeTitle = docToSave.title.replace(/[\/\\:?*"<>|]/g, "_").slice(0, 40).trim();
-          const cleanDocName = `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}.${ext}`;
-          const driveResult = await uploadFileToGoogleDrive(
-            currentDriveConfig.accessToken,
-            currentDriveConfig.folderId,
-            cleanDocName,
-            primaryImg.dataUrl,
-            `Văn bản số ${docToSave.docNumber}: ${docToSave.title}`
-          );
-
-          docToSave.driveFileId = driveResult.id;
-          docToSave.driveWebViewLink = driveResult.webViewLink;
-          docToSave.driveThumbnailLink = driveResult.thumbnailLink;
           docToSave.history.push({
             id: `h-drive-${Date.now()}`,
             timestamp: new Date().toISOString(),
             action: "ĐỒNG BỘ GOOGLE DRIVE",
             user: currentDriveConfig.userEmail || "Google Drive Sync",
-            details: `Đã lưu bản scan lên thư mục Google Drive: [${driveResult.name}]`,
+            details: `Đã lưu ${docToSave.images.length} trang scan lên thư mục Google Drive: [${primaryResult?.name || docToSave.docNumber}]`,
           });
 
-          showToast(`Đã lưu bản scan lên Google Drive thành công! (${driveResult.name})`, "success");
+          showToast(
+            `Đã lưu ${docToSave.images.length > 1 ? `${docToSave.images.length} trang scan` : "bản scan"} lên Google Drive thành công!`,
+            "success"
+          );
         } catch (driveErr: any) {
           console.warn("Không thể tải tệp lên Google Drive:", driveErr);
           const errMsg = driveErr.message || "";
@@ -408,48 +497,110 @@ export default function App() {
     });
   };
 
-  // Document Deleted handler (Sync delete from Google Drive + show Toast)
-  const handleDeleteDocument = async (id: string) => {
+  // Document Deleted handler (Tombstone State Machine & Safe Async Contract - Task 3.3)
+  const handleDeleteDocument = async (id: string): Promise<{ success: boolean; driveSynced: boolean; message?: string }> => {
     try {
       const docToDelete = await getDocumentById(id);
       const currentDriveConfig = getGoogleDriveConfig();
 
-      // 1. Thử xóa file lẻ trên Google Drive (nếu có và token còn hạn)
-      if (docToDelete?.driveFileId && currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
-        try {
-          showToast(`Đang dọn dẹp tệp ${docToDelete.docNumber} trên Google Drive...`, "info");
-          await deleteFileFromGoogleDrive(currentDriveConfig.accessToken, docToDelete.driveFileId);
-        } catch (delErr) {
-          console.warn("Tệp trên Google Drive không còn tồn tại hoặc đã được dọn dẹp trước:", delErr);
-        }
-      }
+      // 1. Tạo Tombstone ngay lập tức với snapshot đầy đủ (registrySynced: false, assetCleaned: false)
+      addTombstone({
+        id,
+        docNumber: docToDelete?.docNumber,
+        driveFileId: docToDelete?.driveFileId,
+        deletedAt: Date.now(),
+        registrySynced: false,
+        assetCleaned: !docToDelete?.driveFileId,
+      });
 
-      // 2. Xóa khỏi cơ sở dữ liệu nội bộ
+      // 2. Xóa khỏi cơ sở dữ liệu nội bộ IndexedDB & cân chỉnh categories
       await deleteDocument(id);
       const updatedDocs = await getAllDocuments();
-      // Tự động cân chỉnh lùi bộ đếm nếu vừa xóa văn bản có số lớn nhất
       const updatedCats = reconcileCategoryCounts(updatedDocs);
       setCategories(updatedCats);
       setDocuments(updatedDocs);
 
-      // 3. Cập nhật ngay lập tức sổ văn bản và số đếm đã cân chỉnh lên file database Google Drive
+      let isDriveSynced = false;
+
+      // 3. Cập nhật ngay lập tức lên Google Drive Registry qua saveDatabaseWithConflictResolution
       if (currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
-        await pushLocalDbToDrive(updatedCats, updatedDocs);
+        try {
+          await saveDatabaseWithConflictResolution(currentDriveConfig.accessToken, currentDriveConfig.folderId, (current) => {
+            const tombstoneItem = { id, deletedAt: Date.now() };
+            if (!current) {
+              return {
+                version: 1,
+                lastUpdated: new Date().toISOString(),
+                categories: updatedCats,
+                documents: updatedDocs.filter((d) => d.id !== id),
+                deletedRecords: [tombstoneItem],
+              };
+            }
+
+            const merged = mergeDocumentsAndTombstones(
+              current.documents || [],
+              updatedDocs,
+              current.deletedRecords || [],
+              [tombstoneItem]
+            );
+
+            return {
+              ...current,
+              categories: updatedCats,
+              documents: merged.documents,
+              deletedRecords: merged.deletedRecords,
+            };
+          });
+
+          isDriveSynced = true;
+          updateTombstone(id, { registrySynced: true });
+        } catch (regErr) {
+          console.warn("Chưa thể cập nhật dấu xóa lên Google Drive registry lúc này:", regErr);
+        }
       }
 
-      // 4. Bắn tín hiệu Realtime tức thời tới các thiết bị khác
+      // 4. Xóa file asset trên Google Drive (nếu có)
+      if (docToDelete?.driveFileId && currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
+        try {
+          const isCleaned = await deleteFileFromGoogleDrive(
+            currentDriveConfig.accessToken,
+            docToDelete.driveFileId,
+            currentDriveConfig.folderId
+          );
+          if (isCleaned) {
+            updateTombstone(id, { assetCleaned: true });
+          }
+        } catch (delErr: any) {
+          console.warn("Tệp trên Google Drive không còn tồn tại hoặc lỗi mạng:", delErr);
+          if (delErr?.status === 404) {
+            updateTombstone(id, { assetCleaned: true });
+          }
+        }
+      }
+
+      // 5. Bắn tín hiệu Realtime tức thời
       broadcastDocumentChange({
         changeType: "delete",
         folderId: currentDriveConfig.folderId,
       });
 
-      showToast(
-        `Đã xóa văn bản ${docToDelete?.docNumber || id} khỏi sổ đăng ký và dọn dẹp Google Drive.`,
-        "success"
-      );
+      if (isDriveSynced) {
+        showToast(
+          `Đã xóa văn bản ${docToDelete?.docNumber || id} khỏi sổ đăng ký và đồng bộ Google Drive thành công.`,
+          "success"
+        );
+      } else {
+        showToast(
+          `Đã xóa văn bản ${docToDelete?.docNumber || id} trên máy. Dữ liệu Google Drive sẽ được cập nhật khi có mạng.`,
+          "info"
+        );
+      }
+
+      return { success: true, driveSynced: isDriveSynced };
     } catch (e: any) {
       console.error("Lỗi khi xóa văn bản:", e);
       showToast(`Không thể xóa văn bản: ${e.message}`, "error");
+      return { success: false, driveSynced: false, message: e.message };
     }
   };
 

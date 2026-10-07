@@ -534,3 +534,126 @@ export async function resetSystemToCleanState(): Promise<void> {
   saveCategories(resetCats);
 }
 
+// ==========================================
+// Tombstone State Machine & Storage (EFR-07 & EFR-11)
+// ==========================================
+
+export interface TombstoneRecord {
+  id: string;
+  docNumber?: string;
+  driveFileId?: string;
+  deletedAt: number;
+  registrySynced: boolean;
+  assetCleaned: boolean;
+}
+
+const LOCAL_STORAGE_TOMBSTONES_KEY = "doc_tombstones_v1";
+
+/**
+ * Lấy toàn bộ danh sách Tombstones từ bộ nhớ cục bộ
+ */
+export function getTombstones(): TombstoneRecord[] {
+  if (typeof localStorage === "undefined") {
+    return [];
+  }
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_TOMBSTONES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Không thể đọc tombstones từ localStorage:", err);
+  }
+  return [];
+}
+
+/**
+ * Lưu danh sách Tombstones vào localStorage
+ */
+export function saveTombstones(tombstones: TombstoneRecord[]): void {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    localStorage.setItem(LOCAL_STORAGE_TOMBSTONES_KEY, JSON.stringify(tombstones));
+  } catch (err) {
+    console.warn("Không thể lưu tombstones vào localStorage:", err);
+  }
+}
+
+/**
+ * Thêm hoặc cập nhật một Tombstone
+ */
+export function addTombstone(tombstone: TombstoneRecord): void {
+  const current = getTombstones();
+  const index = current.findIndex((t) => t.id === tombstone.id);
+  if (index !== -1) {
+    current[index] = { ...current[index], ...tombstone };
+  } else {
+    current.push(tombstone);
+  }
+  saveTombstones(current);
+}
+
+/**
+ * Cập nhật một phần thuộc tính của Tombstone theo ID
+ */
+export function updateTombstone(id: string, patch: Partial<TombstoneRecord>): void {
+  const current = getTombstones();
+  const index = current.findIndex((t) => t.id === id);
+  if (index !== -1) {
+    current[index] = { ...current[index], ...patch };
+    saveTombstones(current);
+  }
+}
+
+/**
+ * Lấy Tombstone theo ID văn bản
+ */
+export function getTombstoneById(id: string): TombstoneRecord | null {
+  const current = getTombstones();
+  return current.find((t) => t.id === id) || null;
+}
+
+/**
+ * Dọn dẹp (prune) các Tombstone cũ
+ * Chỉ dọn khi cả registrySynced === true VÀ (!driveFileId || assetCleaned === true) VÀ cũ hơn 30 ngày
+ */
+export function pruneTombstones(
+  recordsOrAge?: TombstoneRecord[] | number,
+  maxAgeDays: number = 30
+): TombstoneRecord[] {
+  let records: TombstoneRecord[];
+  let days = 30;
+
+  if (Array.isArray(recordsOrAge)) {
+    records = recordsOrAge;
+    days = maxAgeDays;
+  } else {
+    records = getTombstones();
+    if (typeof recordsOrAge === "number") {
+      days = recordsOrAge;
+    }
+  }
+
+  const thresholdTime = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  const remaining = records.filter((t) => {
+    // Nếu chưa sync registry hoặc chưa clean asset, GIỮ LẠI để retry
+    if (!t.registrySynced) return true;
+    if (t.driveFileId && !t.assetCleaned) return true;
+
+    // Chỉ dọn khi đã hoàn tất cả 2 việc VÀ đã tồn tại quá số ngày quy định
+    return t.deletedAt > thresholdTime;
+  });
+
+  if (!Array.isArray(recordsOrAge) && remaining.length !== records.length) {
+    saveTombstones(remaining);
+  }
+
+  return remaining;
+}
+

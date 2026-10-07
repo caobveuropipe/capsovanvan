@@ -28,6 +28,9 @@ import {
   Upload,
   ChevronLeft,
   ChevronRight,
+  Loader2,
+  AlertCircle,
+  Shield,
 } from "lucide-react";
 import { DocumentCategory, DocumentRecord, IntakeSource } from "../types";
 import { formatVietnameseDate, formatVietnameseDateTime } from "../utils/numberGenerator";
@@ -37,7 +40,7 @@ interface DocumentArchiveViewProps {
   categories: DocumentCategory[];
   onViewDetail: (doc: DocumentRecord) => void;
   onPrintDocument: (doc: DocumentRecord) => void;
-  onDeleteDocument: (id: string) => void;
+  onDeleteDocument: (id: string) => Promise<{ success: boolean; driveSynced: boolean; message?: string }> | void;
   onOpenIntake: () => void;
 }
 
@@ -55,6 +58,8 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
   const [viewMode, setViewMode] = useState<"grid" | "table">("table");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "number">("newest");
+  const [docToDeleteConfirm, setDocToDeleteConfirm] = useState<DocumentRecord | null>(null);
+  const [isDeletingDocId, setIsDeletingDocId] = useState<string | null>(null);
   const categoryScrollRef = React.useRef<HTMLDivElement | null>(null);
 
   const scrollCategories = (direction: "left" | "right") => {
@@ -528,6 +533,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
 
                     {/* Print */}
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onPrintDocument(doc);
@@ -536,6 +542,19 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                       className="p-1.5 text-slate-400 hover:text-slate-800 rounded-lg hover:bg-white transition-colors"
                     >
                       <Printer className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDocToDeleteConfirm(doc);
+                      }}
+                      title="Xóa văn bản"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
 
                     {/* View Detail */}
@@ -624,6 +643,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                           </a>
                         )}
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onPrintDocument(doc);
@@ -634,6 +654,18 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                           <Printer className="w-3.5 h-3.5" />
                         </button>
                         <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDocToDeleteConfirm(doc);
+                          }}
+                          title="Xóa văn bản"
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onViewDetail(doc);
@@ -648,6 +680,94 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal for Archive View */}
+      {docToDeleteConfirm && (
+        <div 
+          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-60 flex items-center justify-center p-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isDeletingDocId) setDocToDeleteConfirm(null);
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Xác nhận xóa văn bản
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Bạn có chắc chắn muốn xóa văn bản{" "}
+                  <strong className="text-slate-900 font-mono font-bold">{docToDeleteConfirm.docNumber}</strong>?
+                </p>
+                <p className="text-[11px] text-slate-500 italic">
+                  "{docToDeleteConfirm.title}"
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 rounded-xl p-3 border border-amber-200/80 text-[11px] text-amber-800 space-y-1">
+              <p className="font-semibold flex items-center gap-1 text-amber-900">
+                <Shield className="w-3.5 h-3.5" /> Lưu ý an toàn:
+              </p>
+              <p>
+                Văn bản sẽ được đánh dấu xóa khỏi sổ đăng ký. Tệp đính kèm trên Google Drive (nếu có) cũng sẽ được dọn dẹp theo quy định.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingDocId !== null}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDocToDeleteConfirm(null);
+                }}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingDocId !== null}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (isDeletingDocId || !docToDeleteConfirm) return;
+                  const docId = docToDeleteConfirm.id;
+                  setIsDeletingDocId(docId);
+                  try {
+                    await onDeleteDocument(docId);
+                    setIsDeletingDocId(null);
+                    setDocToDeleteConfirm(null);
+                  } catch (err) {
+                    setIsDeletingDocId(null);
+                    setDocToDeleteConfirm(null);
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeletingDocId ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Xác nhận xóa
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -38,7 +38,7 @@ interface IntakeModalProps {
   isOpen: boolean;
   onClose: () => void;
   categories: DocumentCategory[];
-  onDocumentCreated: (doc: DocumentRecord) => void;
+  onDocumentCreated: (doc: DocumentRecord) => Promise<void> | void;
   onOpenPrintModal: (doc: DocumentRecord) => void;
 }
 
@@ -362,7 +362,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       setIsOcrProcessing(false);
     }
   };
-  const handleIssueNumberAndSave = () => {
+  const handleIssueNumberAndSave = async () => {
     if (isSubmitting) return;
 
     if (!title.trim()) {
@@ -447,7 +447,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      onDocumentCreated(newDoc);
+      await onDocumentCreated(newDoc);
       setSuccessDoc(newDoc);
 
       // NGAY LẬP TỨC CLEAR TOÀN BỘ FILE VÀ FORM VỪA TẢI
@@ -819,9 +819,49 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                         onClick={capturePhoto}
                         className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
                       >
-                        <Camera className="w-4 h-4" /> Chụp & Phân tích OCR
+                        <Camera className="w-4 h-4" />
+                        <span>{images.length === 0 ? "Chụp trang 1" : `Chụp tiếp trang ${images.length + 1}`}</span>
                       </button>
                     </div>
+
+                    {/* Danh sách các trang ảnh đã chụp bằng Camera */}
+                    {images.length > 0 && (
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2 mt-3">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                          <span className="flex items-center gap-1.5 text-emerald-700">
+                            <Camera className="w-4 h-4 text-emerald-600" />
+                            <span>Trang ảnh đã chụp ({images.length} trang)</span>
+                          </span>
+                          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            Đã nạp {images.length} trang
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1">
+                          {images.map((img, idx) => (
+                            <div
+                              key={img.id}
+                              className="relative group rounded-lg overflow-hidden border-2 border-slate-200 bg-slate-900 aspect-3/4 flex flex-col justify-between"
+                            >
+                              <img src={img.dataUrl} alt={`Trang ${idx + 1}`} className="w-full h-full object-cover" />
+                              <div className="absolute top-1 left-1 bg-black/70 text-white font-bold text-[9px] px-1.5 py-0.5 rounded">
+                                Trang {idx + 1}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}
+                                className="absolute top-1 right-1 p-1 bg-rose-600/90 hover:bg-rose-700 text-white rounded cursor-pointer opacity-90 group-hover:opacity-100"
+                                title="Xóa trang này"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-slate-500 italic text-center pt-1">
+                          Bạn có thể tiếp tục hướng camera và bấm &quot;Chụp tiếp trang sau&quot; để nạp đủ các trang của văn bản trước khi sang bước Cấp số.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 

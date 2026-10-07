@@ -519,19 +519,102 @@ export async function listDriveFolders(
   }
 }
 
-// Delete file from Google Drive
+// Delete or remove file from Google Drive (Tương thích với cả quyền Editor trên thư mục Được chia sẻ)
 export async function deleteFileFromGoogleDrive(
   accessToken: string,
-  fileId: string
+  fileId: string,
+  folderId?: string
 ): Promise<boolean> {
   try {
+    // 1. Tự động chuyển file vào thư mục con "_ThungRac_DaXoa" bên trong thư mục chia sẻ
+    // Khi người dùng có quyền "Người chỉnh sửa" (Editor) trên thư mục của người khác:
+    // Google Drive cho phép di chuyển file (addParents + removeParents) sang thư mục con nội bộ.
+    // Điều này giúp file biến mất khỏi thư mục chính ngay lập tức, đồng thời vẫn lưu trữ an toàn trong thư mục rác.
+    if (folderId && folderId !== "root") {
+      try {
+        const trashSubfolder = await findOrCreateDriveFolder(accessToken, "_ThungRac_DaXoa", folderId);
+        if (trashSubfolder && trashSubfolder.id) {
+          const moveRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${encodeURIComponent(trashSubfolder.id)}&removeParents=${encodeURIComponent(folderId)}&supportsAllDrives=true`,
+            {
+              method: "PATCH",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({}),
+            }
+          );
+          if (moveRes.ok || moveRes.status === 404) {
+            console.info(`[Drive Asset] Đã di chuyển tệp ${fileId} vào thư mục con [_ThungRac_DaXoa] thành công.`);
+            return true;
+          }
+        }
+      } catch (moveErr) {
+        console.warn("[Drive Asset] Không thể di chuyển vào thư mục rác con, thử gỡ liên kết trực tiếp:", moveErr);
+      }
+
+      // Fallback 1b: Gỡ file khỏi thư mục cha (removeParents)
+      try {
+        const removeRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}?removeParents=${encodeURIComponent(folderId)}&supportsAllDrives=true`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          }
+        );
+        if (removeRes.ok || removeRes.status === 404) {
+          return true;
+        }
+      } catch (parentErr) {
+        // Tiếp tục thử các phương thức khác
+      }
+    }
+
+    // 2. Thử đưa vào Thùng rác chính của Google Drive (trashed: true)
+    try {
+      const trashRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ trashed: true }),
+        }
+      );
+      if (trashRes.ok || trashRes.status === 404) {
+        return true;
+      }
+    } catch (trashErr) {
+      // Tiếp tục thử DELETE vĩnh viễn
+    }
+
+    // 3. Thử xóa vĩnh viễn (DELETE - áp dụng khi người dùng là chủ sở hữu file)
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
     });
-    return response.ok || response.status === 204 || response.status === 404;
+
+    if (response.ok || response.status === 204 || response.status === 404) {
+      return true;
+    }
+
+    if (response.status === 403) {
+      console.info(
+        `[Drive Asset] Tệp ${fileId} thuộc quyền sở hữu của thành viên khác trong thư mục chia sẻ (Google Drive giới hạn quyền DELETE của Editor). Dấu xóa văn bản đã được ghi nhận an toàn vào sổ đăng ký.`
+      );
+      return false;
+    }
+
+    return false;
   } catch (err) {
     console.warn("Lỗi khi xóa file trên Google Drive:", err);
     return false;
@@ -546,26 +629,106 @@ export const DRIVE_DB_FILENAME = "vcc_documents_database.json";
 
 export interface DriveDatabasePayload {
   version: number;
+  revision?: number;
   lastUpdated: string;
   updatedBy?: string;
   categories: any[];
   documents: any[];
+  deletedRecords?: { id: string; deletedAt: number }[];
 }
 
-// Find a file by name inside a folder (or root) and cleanup duplicates if any
+/**
+ * Hàm hợp nhất văn bản và dấu xóa (Tombstone-Wins) dùng chung (EFR-03, EFR-06 & EFR-20)
+ */
+export function mergeDocumentsAndTombstones(
+  docsAOrPayloadA: any[] | { documents?: any[]; deletedRecords?: any[]; revision?: number } = [],
+  docsBOrPayloadB: any[] | { documents?: any[]; deletedRecords?: any[]; revision?: number } = [],
+  tombstonesA: { id: string; deletedAt: number }[] = [],
+  tombstonesB: { id: string; deletedAt: number }[] = []
+): { documents: any[]; deletedRecords: { id: string; deletedAt: number }[]; revision?: number } {
+  let docsA: any[] = [];
+  let docsB: any[] = [];
+  let tA = tombstonesA;
+  let tB = tombstonesB;
+  let maxRevision: number | undefined;
+
+  if (docsAOrPayloadA && !Array.isArray(docsAOrPayloadA) && typeof docsAOrPayloadA === "object") {
+    docsA = docsAOrPayloadA.documents || [];
+    tA = docsAOrPayloadA.deletedRecords || [];
+    if (typeof docsAOrPayloadA.revision === "number") maxRevision = docsAOrPayloadA.revision;
+  } else if (Array.isArray(docsAOrPayloadA)) {
+    docsA = docsAOrPayloadA;
+  }
+
+  if (docsBOrPayloadB && !Array.isArray(docsBOrPayloadB) && typeof docsBOrPayloadB === "object") {
+    docsB = docsBOrPayloadB.documents || [];
+    tB = docsBOrPayloadB.deletedRecords || [];
+    if (typeof docsBOrPayloadB.revision === "number") {
+      maxRevision = Math.max(maxRevision ?? 0, docsBOrPayloadB.revision);
+    }
+  } else if (Array.isArray(docsBOrPayloadB)) {
+    docsB = docsBOrPayloadB;
+  }
+
+  // 1. Union tombstones, giữ deletedAt mới nhất
+  const tombstoneMap = new Map<string, number>();
+  for (const t of [...(tA || []), ...(tB || [])]) {
+    if (!t || !t.id) continue;
+    const existing = tombstoneMap.get(t.id);
+    if (!existing || t.deletedAt > existing) {
+      tombstoneMap.set(t.id, t.deletedAt);
+    }
+  }
+
+  const mergedTombstones: { id: string; deletedAt: number }[] = Array.from(tombstoneMap.entries()).map(
+    ([id, deletedAt]) => ({ id, deletedAt })
+  );
+  const deletedIds = new Set(tombstoneMap.keys());
+
+  // 2. Union documents theo ID, giữ bản ghi có thời gian mới hơn
+  const docMap = new Map<string, any>();
+  for (const doc of [...(docsA || []), ...(docsB || [])]) {
+    if (!doc || !doc.id) continue;
+    // Tombstone-Wins: loại bỏ ngay nếu nằm trong danh sách đã xóa
+    if (deletedIds.has(doc.id)) continue;
+
+    const existing = docMap.get(doc.id);
+    if (!existing) {
+      docMap.set(doc.id, doc);
+    } else {
+      const timeDoc = new Date(doc.updatedAt || doc.createdAt || doc.registrationDate || 0).getTime();
+      const timeExisting = new Date(existing.updatedAt || existing.createdAt || existing.registrationDate || 0).getTime();
+      if (timeDoc > timeExisting) {
+        docMap.set(doc.id, doc);
+      }
+    }
+  }
+
+  // Triệt để lọc sạch theo Tombstone-Wins
+  const mergedDocs = Array.from(docMap.values()).filter((d) => !deletedIds.has(d.id));
+
+  return {
+    documents: mergedDocs,
+    deletedRecords: mergedTombstones,
+    ...(maxRevision !== undefined ? { revision: maxRevision + 1 } : {}),
+  };
+}
+
+/**
+ * Tìm file trên Google Drive theo tên (lọc bỏ các file .bak, deprecated, trashed)
+ */
 export async function findDriveFileByName(
   accessToken: string,
   fileName: string,
   folderId?: string
-): Promise<{ id: string; name: string; parents?: string[] } | null> {
+): Promise<{ id: string; name: string; etag?: string; parents?: string[]; modifiedTime?: string } | null> {
   try {
     let query = `name = '${fileName}' and trashed = false`;
     if (folderId && folderId !== "root") {
       query += ` and '${folderId}' in parents`;
     }
 
-    // List all matches (sorted newest first)
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,parents,modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&orderBy=modifiedTime desc&pageSize=10`;
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,parents,modifiedTime,properties,version,headRevisionId)&supportsAllDrives=true&includeItemsFromAllDrives=true&orderBy=modifiedTime desc&pageSize=10`;
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -575,22 +738,221 @@ export async function findDriveFileByName(
     if (!res.ok) return null;
     const data = await res.json();
     if (data.files && data.files.length > 0) {
-      const primaryFile = data.files[0];
-
-      // If there are duplicate files, delete older duplicates in the background to clean up
-      if (data.files.length > 1) {
-        for (let i = 1; i < data.files.length; i++) {
-          deleteFileFromGoogleDrive(accessToken, data.files[i].id).catch(() => {});
-        }
-      }
-
-      return primaryFile;
+      const validFiles = data.files.filter((f: any) => {
+        if (f.name?.endsWith(".bak")) return false;
+        if (f.properties?.deprecated === "true") return false;
+        return true;
+      });
+      return validFiles.length > 0 ? validFiles[0] : null;
     }
     return null;
   } catch (err) {
-    console.warn("Error finding file on Google Drive:", err);
+    console.warn("Lỗi khi tìm file trên Google Drive:", err);
     return null;
   }
+}
+
+/**
+ * Điểm nhập chung phân giải file database canonical và tự động kích hoạt reconciliation (EFR-21 & EFR-22)
+ */
+export async function resolveCanonicalDriveDatabase(
+  accessToken: string,
+  folderId?: string
+): Promise<{ id: string; name: string; etag?: string; parents?: string[]; modifiedTime?: string } | null> {
+  let query = `name = '${DRIVE_DB_FILENAME}' and trashed = false`;
+  if (folderId && folderId !== "root") {
+    query += ` and '${folderId}' in parents`;
+  }
+
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,parents,modifiedTime,properties,version,headRevisionId)&supportsAllDrives=true&includeItemsFromAllDrives=true&orderBy=modifiedTime desc&pageSize=20`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+  } catch (netErr: any) {
+    // EFR-22: Mọi lỗi mạng/fetch reject BẮT BUỘC ném ngoại lệ dừng luồng, không trả null
+    throw new Error(`Không thể kết nối Google Drive (Lỗi mạng): ${netErr.message || netErr}`);
+  }
+
+  // EFR-22: Mọi lỗi HTTP (!res.ok, 401, 403, 500) BẮT BUỘC ném ngoại lệ dừng luồng
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(`Lỗi kiểm tra Google Drive (HTTP ${res.status}): ${errorText || res.statusText}`);
+  }
+
+  let data: any;
+  try {
+    data = await res.json();
+  } catch (parseErr: any) {
+    throw new Error(`Lỗi đọc phản hồi từ Google Drive: ${parseErr.message || parseErr}`);
+  }
+
+  const allFiles = data.files || [];
+  // Lọc bỏ các file đã bị fence thành .bak hoặc deprecated
+  const validFiles = allFiles.filter((f: any) => {
+    if (f.name?.endsWith(".bak")) return false;
+    if (f.properties?.deprecated === "true") return false;
+    return true;
+  });
+
+  // CHỈ trả về null khi và chỉ khi liệt kê thành công và tập kết quả rỗng (EFR-22)
+  if (validFiles.length === 0) {
+    return null;
+  }
+
+  if (validFiles.length === 1) {
+    return validFiles[0];
+  }
+
+  // Có > 1 file trùng: Tự động kích hoạt quy trình Lock-First Safe Reconciliation (EFR-21)
+  console.info(`[Drive Database] Phát hiện ${validFiles.length} file database trùng tên. Tiến hành Lock-First Reconciliation...`);
+  const canonicalFile = await reconcileDuplicateDriveDatabases(accessToken, validFiles);
+  return canonicalFile;
+}
+
+/**
+ * Quy trình Lock-First Safe Reconciliation cho duplicate registries (EFR-15, EFR-17, EFR-18, EFR-19 & EFR-20)
+ */
+export async function reconcileDuplicateDriveDatabases(
+  accessToken: string,
+  files: any[]
+): Promise<{ id: string; name: string; etag?: string; parents?: string[]; modifiedTime?: string }> {
+  if (!files || files.length === 0) {
+    throw new Error("Không có file nào để reconcile");
+  }
+  if (files.length === 1) {
+    return files[0];
+  }
+
+  // Chọn canonical file (file mới nhất theo modifiedTime)
+  const canonicalFile = files[0];
+  const secondaryFiles = files.slice(1);
+
+  // Bước 1 (Lock First - Metadata only): Khóa ghi tất cả file phụ trước bằng metadata update
+  for (const secFile of secondaryFiles) {
+    const newName = `${DRIVE_DB_FILENAME}.merged.${secFile.id}.bak`;
+    const lockMetadata = {
+      name: newName,
+      contentRestrictions: [
+        {
+          readOnly: true,
+          reason: "Migrated to canonical database",
+        },
+      ],
+      properties: {
+        deprecated: "true",
+        canonicalFileId: canonicalFile.id,
+      },
+    };
+
+    const lockRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${secFile.id}?supportsAllDrives=true`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(lockMetadata),
+      }
+    );
+
+    if (!lockRes.ok) {
+      console.warn(`[Reconciliation] Không thể áp dụng Lock-First trên file phụ ${secFile.id}:`, await lockRes.text());
+    }
+  }
+
+  // Bước 2 (Read Final Frozen Snapshot): Đọc nội dung snapshot đóng băng cuối cùng của từng file phụ
+  const allPayloads: DriveDatabasePayload[] = [];
+
+  const canonicalPayload = await readDatabaseFromGoogleDrive(accessToken, canonicalFile.id);
+  if (canonicalPayload) {
+    allPayloads.push(canonicalPayload);
+  }
+
+  for (const secFile of secondaryFiles) {
+    const secPayload = await readDatabaseFromGoogleDrive(accessToken, secFile.id);
+    if (secPayload) {
+      allPayloads.push(secPayload);
+    }
+  }
+
+  // Bước 3 (Merge with Tombstone-Wins): Hợp nhất toàn bộ dữ liệu
+  let mergedCategories: any[] = canonicalPayload?.categories || [];
+  let mergedDocuments: any[] = canonicalPayload?.documents || [];
+  let mergedTombstones: { id: string; deletedAt: number }[] = canonicalPayload?.deletedRecords || [];
+
+  for (const p of allPayloads) {
+    if (p === canonicalPayload) continue;
+
+    // Hợp nhất categories
+    if (Array.isArray(p.categories)) {
+      for (const cat of p.categories) {
+        const existingIdx = mergedCategories.findIndex(
+          (c) => c.id === cat.id || c.code?.toUpperCase() === cat.code?.toUpperCase()
+        );
+        if (existingIdx !== -1) {
+          mergedCategories[existingIdx] = {
+            ...mergedCategories[existingIdx],
+            currentCount: Math.max(mergedCategories[existingIdx].currentCount || 0, cat.currentCount || 0),
+          };
+        } else {
+          mergedCategories.push(cat);
+        }
+      }
+    }
+
+    // Hợp nhất documents & tombstones với quy tắc Tombstone-Wins
+    const mergedResult = mergeDocumentsAndTombstones(
+      mergedDocuments,
+      p.documents || [],
+      mergedTombstones,
+      p.deletedRecords || []
+    );
+    mergedDocuments = mergedResult.documents;
+    mergedTombstones = mergedResult.deletedRecords;
+  }
+
+  // Bước 4 (Canonical CAS Write): Ghi lại canonical file
+  const updatedCanonicalPayload: DriveDatabasePayload = {
+    version: 1,
+    revision: (canonicalPayload?.revision || 0) + 1,
+    lastUpdated: new Date().toISOString(),
+    categories: mergedCategories,
+    documents: mergedDocuments,
+    deletedRecords: mergedTombstones,
+  };
+
+  const sanitized = sanitizeDatabasePayload(updatedCanonicalPayload);
+  const jsonBlob = new Blob([JSON.stringify(sanitized, null, 2)], { type: "application/json" });
+
+  const patchHeaders: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  if (canonicalFile.etag) {
+    patchHeaders["If-Match"] = canonicalFile.etag;
+  }
+
+  const saveRes = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${canonicalFile.id}?uploadType=media&supportsAllDrives=true`,
+    {
+      method: "PATCH",
+      headers: patchHeaders,
+      body: jsonBlob,
+    }
+  );
+
+  if (!saveRes.ok) {
+    const errText = await saveRes.text().catch(() => "");
+    throw new Error(`[Reconciliation] Không thể lưu canonical database: ${errText}`);
+  }
+
+  return canonicalFile;
 }
 
 // Read JSON database from Google Drive
@@ -658,73 +1020,165 @@ function sanitizeDatabasePayload(payload: DriveDatabasePayload): DriveDatabasePa
   };
 }
 
-// Save or Update JSON database to Google Drive (Deduplicated)
+/**
+ * Cập nhật cơ sở dữ liệu trên Google Drive có chống xung đột và giải quyết CAS (EFR-12, EFR-14 & EFR-21)
+ */
+export async function saveDatabaseWithConflictResolution(
+  accessToken: string,
+  folderId: string | undefined,
+  updateFn: (currentPayload: DriveDatabasePayload | null) => DriveDatabasePayload,
+  maxRetries = 3
+): Promise<string> {
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    attempt++;
+    // Luôn truy vấn canonical file mới nhất qua resolveCanonicalDriveDatabase (EFR-21)
+    const canonicalFile = await resolveCanonicalDriveDatabase(accessToken, folderId);
+
+    if (!canonicalFile) {
+      // Kho chưa tồn tại trên Drive -> Tạo mới bằng multipart POST
+      const initialPayload = updateFn(null);
+      const sanitized = sanitizeDatabasePayload(initialPayload);
+      const blob = new Blob([JSON.stringify(sanitized, null, 2)], { type: "application/json" });
+
+      const metadata: any = {
+        name: DRIVE_DB_FILENAME,
+        description: "Hồ sơ đăng ký số và danh mục văn bản dùng chung VCCORP",
+        mimeType: "application/json",
+      };
+      if (folderId && folderId !== "root") {
+        metadata.parents = [folderId];
+      }
+
+      const form = new FormData();
+      form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+      form.append("file", blob);
+
+      const res = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: form,
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Không thể tạo file database trên Google Drive");
+      }
+      const result = await res.json();
+      return result.id;
+    }
+
+    // Đọc payload hiện tại và etag từ Drive
+    const readRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${canonicalFile.id}?alt=media&supportsAllDrives=true`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!readRes.ok) {
+      throw new Error(`Không thể đọc database từ Google Drive (HTTP ${readRes.status})`);
+    }
+
+    const etagHeader = readRes.headers.get("ETag") || canonicalFile.etag || "";
+    const currentPayload: DriveDatabasePayload = await readRes.json();
+
+    // Áp dụng updateFn
+    const newPayload = updateFn(currentPayload);
+    newPayload.revision = (currentPayload.revision || 0) + 1;
+    newPayload.lastUpdated = new Date().toISOString();
+
+    const sanitized = sanitizeDatabasePayload(newPayload);
+    const blob = new Blob([JSON.stringify(sanitized, null, 2)], { type: "application/json" });
+
+    const patchHeaders: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    };
+    if (etagHeader) {
+      patchHeaders["If-Match"] = etagHeader;
+    }
+
+    const patchRes = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${canonicalFile.id}?uploadType=media&supportsAllDrives=true`,
+      {
+        method: "PATCH",
+        headers: patchHeaders,
+        body: blob,
+      }
+    );
+
+    if (patchRes.ok) {
+      return canonicalFile.id;
+    }
+
+    // Bắt lỗi 412 (Precondition Failed: ETag bị thay đổi do thiết bị khác ghi đè)
+    if (patchRes.status === 412) {
+      console.warn(`[Drive CAS] Phát hiện xung đột ghi đè đồng thời (412 Precondition Failed). Thử lại lần ${attempt}/${maxRetries}...`);
+      await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt) + Math.random() * 50));
+      continue;
+    }
+
+    // Bắt lỗi 403 (bị Write Fence khóa readOnly trên file phụ)
+    if (patchRes.status === 403) {
+      console.warn(`[Drive CAS] File ${canonicalFile.id} đã bị khóa ghi (Write Fence). Đang chuyển hướng sang canonical file mới...`);
+      await new Promise((r) => setTimeout(r, 200));
+      continue;
+    }
+
+    const errObj = await patchRes.json().catch(() => ({}));
+    throw new Error(errObj.error?.message || `Lỗi cập nhật Google Drive (HTTP ${patchRes.status})`);
+  }
+
+  throw new Error(`Không thể cập nhật cơ sở dữ liệu sau ${maxRetries} lần thử do xung đột đồng thời.`);
+}
+
+// Save or Update JSON database to Google Drive (Deduplicated wrapper)
 export async function saveDatabaseToGoogleDrive(
   accessToken: string,
   folderId: string | undefined,
   payload: DriveDatabasePayload
 ): Promise<string> {
-  const sanitizedPayload = sanitizeDatabasePayload(payload);
-  const jsonString = JSON.stringify(sanitizedPayload, null, 2);
-  const blob = new Blob([jsonString], { type: "application/json" });
-
-  // 1. Check if database file already exists
-  const existingFile = await findDriveFileByName(accessToken, DRIVE_DB_FILENAME, folderId);
-
-  if (existingFile) {
-    // Update existing file content directly via PATCH
-    const res = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media&supportsAllDrives=true`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: blob,
+  return saveDatabaseWithConflictResolution(accessToken, folderId, (current) => {
+    // Nếu có dữ liệu hiện tại, gộp categories và documents với Tombstone-Wins
+    if (current) {
+      const mergedCats = [...current.categories];
+      for (const cat of payload.categories || []) {
+        const idx = mergedCats.findIndex((c) => c.id === cat.id || c.code?.toUpperCase() === cat.code?.toUpperCase());
+        if (idx !== -1) {
+          mergedCats[idx] = {
+            ...mergedCats[idx],
+            currentCount: Math.max(mergedCats[idx].currentCount || 0, cat.currentCount || 0),
+          };
+        } else {
+          mergedCats.push(cat);
+        }
       }
-    );
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || "Không thể cập nhật database trên Google Drive");
+      const merged = mergeDocumentsAndTombstones(
+        current.documents || [],
+        payload.documents || [],
+        current.deletedRecords || [],
+        payload.deletedRecords || []
+      );
+
+      return {
+        ...payload,
+        categories: mergedCats,
+        documents: merged.documents,
+        deletedRecords: merged.deletedRecords,
+      };
     }
-
-    return existingFile.id;
-  } else {
-    // Create new database file
-    const metadata: any = {
-      name: DRIVE_DB_FILENAME,
-      description: "Hồ sơ đăng ký số và danh mục văn bản dùng chung VCCORP",
-      mimeType: "application/json",
-    };
-
-    if (folderId && folderId !== "root") {
-      metadata.parents = [folderId];
-    }
-
-    const form = new FormData();
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-    form.append("file", blob);
-
-    const res = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: form,
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || "Không thể tạo file database trên Google Drive");
-    }
-
-    const result = await res.json();
-    return result.id;
-  }
+    return payload;
+  });
 }
+
 

@@ -26,6 +26,8 @@ import {
   File,
   Eye,
   AlertCircle,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { DocumentRecord } from "../types";
 import {
@@ -38,7 +40,7 @@ interface DocumentDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onPrint: (doc: DocumentRecord) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<{ success: boolean; driveSynced: boolean; message?: string }> | void;
 }
 
 export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
@@ -56,6 +58,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [isOcrCopied, setIsOcrCopied] = useState<boolean>(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   if (!isOpen || !doc) return null;
 
@@ -730,25 +734,24 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             {/* Bottom Actions */}
             <div className="flex items-center justify-between pt-4 border-t border-slate-200">
               <button
-                onClick={() => {
-                  if (confirm(`Bạn có chắc muốn xóa văn bản ${doc.docNumber} khỏi sổ đăng ký?`)) {
-                    onDelete(doc.id);
-                    onClose();
-                  }
-                }}
-                className="text-rose-600 hover:text-rose-700 text-xs font-semibold cursor-pointer"
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
               >
+                <Trash2 className="w-3.5 h-3.5" />
                 Xóa văn bản này
               </button>
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={onClose}
                   className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
                 >
                   Đóng
                 </button>
                 <button
+                  type="button"
                   onClick={() => onPrint(doc)}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
                 >
@@ -759,6 +762,89 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* In-App Delete Confirmation Modal (Iframe Sandbox Safe) */}
+      {showDeleteConfirm && (
+        <div 
+          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-60 flex items-center justify-center p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Xác nhận xóa văn bản
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Bạn có chắc chắn muốn xóa văn bản{" "}
+                  <strong className="text-slate-900 font-mono font-bold">{doc.docNumber}</strong>?
+                </p>
+                <p className="text-[11px] text-slate-500 italic">
+                  "{doc.title}"
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 rounded-xl p-3 border border-amber-200/80 text-[11px] text-amber-800 space-y-1">
+              <p className="font-semibold flex items-center gap-1 text-amber-900">
+                <Shield className="w-3.5 h-3.5" /> Lưu ý an toàn:
+              </p>
+              <p>
+                Văn bản sẽ được đánh dấu xóa khỏi sổ đăng ký. Tệp đính kèm trên Google Drive (nếu có) cũng sẽ được dọn dẹp theo quy định.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (isDeleting) return;
+                  setIsDeleting(true);
+                  try {
+                    const res = await onDelete(doc.id);
+                    if (res && res.success === false) {
+                      setIsDeleting(false);
+                      setShowDeleteConfirm(false);
+                      return;
+                    }
+                    setIsDeleting(false);
+                    setShowDeleteConfirm(false);
+                    onClose();
+                  } catch (err) {
+                    setIsDeleting(false);
+                    setShowDeleteConfirm(false);
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Xác nhận xóa
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
