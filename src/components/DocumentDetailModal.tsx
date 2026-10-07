@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   X,
   Printer,
@@ -61,27 +61,27 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  if (!isOpen || !doc) return null;
-
-  const currentImage = doc.images && doc.images[activeImageIndex] ? doc.images[activeImageIndex] : null;
+  const currentImage = doc?.images && doc.images[activeImageIndex] ? doc.images[activeImageIndex] : null;
 
   // Detect file formats
   const imgName = currentImage?.name?.toLowerCase() || "";
   const imgMime = currentImage?.mimeType?.toLowerCase() || "";
   const imgData = currentImage?.dataUrl || "";
 
-  const isPdf =
+  const isPdf = Boolean(
     imgMime.includes("pdf") ||
     imgName.endsWith(".pdf") ||
-    imgData.startsWith("data:application/pdf");
+    imgData.startsWith("data:application/pdf")
+  );
 
-  const isDocx =
+  const isDocx = Boolean(
     imgMime.includes("word") ||
     imgMime.includes("officedocument") ||
     imgName.endsWith(".docx") ||
-    imgName.endsWith(".doc");
+    imgName.endsWith(".doc")
+  );
 
-  const isRawImage =
+  const isRawImage = Boolean(
     !isPdf &&
     !isDocx &&
     (imgMime.startsWith("image/") ||
@@ -89,7 +89,43 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
       imgName.endsWith(".png") ||
       imgName.endsWith(".jpg") ||
       imgName.endsWith(".jpeg") ||
-      imgName.endsWith(".webp"));
+      imgName.endsWith(".webp"))
+  );
+
+  const activeDriveLink = currentImage?.driveWebViewLink || doc?.driveWebViewLink;
+  const targetDriveId = currentImage?.driveFileId || (activeImageIndex === 0 ? doc?.driveFileId : undefined);
+
+  // Chuẩn hóa Blob URL cho PDF để tránh trình duyệt Chromium chặn data:application/pdf trong iframe
+  const pdfBlobUrl = useMemo(() => {
+    if (!isOpen || !doc || !currentImage?.dataUrl || !isPdf) return null;
+    if (currentImage.dataUrl.startsWith("blob:")) return currentImage.dataUrl;
+    if (!currentImage.dataUrl.startsWith("data:application/pdf")) return currentImage.dataUrl;
+    try {
+      const commaIdx = currentImage.dataUrl.indexOf(",");
+      const base64 = commaIdx >= 0 ? currentImage.dataUrl.slice(commaIdx + 1) : currentImage.dataUrl;
+      const binStr = atob(base64);
+      const len = binStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binStr.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.warn("Failed to create blob URL from base64 PDF:", err);
+      return currentImage.dataUrl;
+    }
+  }, [isOpen, doc, currentImage?.dataUrl, isPdf]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfBlobUrl && pdfBlobUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
+  }, [pdfBlobUrl]);
+
+  if (!isOpen || !doc) return null;
 
   const handleCopyNumber = () => {
     navigator.clipboard.writeText(doc.docNumber);
@@ -145,13 +181,13 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {doc.driveWebViewLink && (
+            {activeDriveLink && (
               <a
-                href={doc.driveWebViewLink}
+                href={activeDriveLink}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-700/60 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer min-h-[36px] border border-emerald-500/40"
-                title="Mở tài liệu gốc trên Google Drive"
+                title={`Mở tài liệu gốc ${currentImage?.name ? `(${currentImage.name})` : ""} trên Google Drive`}
               >
                 <HardDrive className="w-3.5 h-3.5 text-emerald-300" />
                 <span className="hidden xs:inline">Google Drive</span>
@@ -209,7 +245,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
           <div className={`lg:col-span-7 bg-slate-950 p-3 sm:p-4 overflow-y-auto ${mobileView === "image" ? "flex flex-col justify-between" : "hidden lg:flex lg:flex-col lg:justify-between"} border-r border-slate-800 select-none`}>
             {/* Viewer Toolbar */}
             <div className="flex items-center justify-between bg-slate-900/90 backdrop-blur-xs p-2 rounded-xl border border-slate-800 mb-3 text-xs text-slate-300">
-              {isRawImage ? (
+              {isRawImage && currentImage?.dataUrl ? (
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setZoomLevel((prev) => Math.max(50, prev - 25))}
@@ -247,7 +283,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2">
-                {isRawImage && (
+                {isRawImage && currentImage?.dataUrl && (
                   <label className="flex items-center gap-1.5 text-[11px] cursor-pointer text-slate-300">
                     <input
                       type="checkbox"
@@ -277,12 +313,19 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               {isPdf ? (
                 /* PDF Interactive Viewer */
                 <div className="w-full h-full min-h-[460px] flex flex-col items-center justify-center relative">
-                  {currentImage?.dataUrl ? (
-                    <iframe
-                      src={currentImage.dataUrl}
+                  {pdfBlobUrl ? (
+                    <object
+                      data={pdfBlobUrl}
+                      type="application/pdf"
                       title={`Xem trước tài liệu ${doc.docNumber}`}
                       className="w-full h-full min-h-[460px] rounded-lg border border-slate-700 bg-white"
-                    />
+                    >
+                      <iframe
+                        src={pdfBlobUrl}
+                        title={`Xem trước tài liệu ${doc.docNumber}`}
+                        className="w-full h-full min-h-[460px] rounded-lg border border-slate-700 bg-white"
+                      />
+                    </object>
                   ) : doc.driveFileId ? (
                     /* Trực tiếp nhúng bản xem trước PDF từ Google Drive qua Google Drive Viewer */
                     <div className="w-full h-full flex flex-col items-center">
@@ -326,9 +369,9 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                     </p>
                   </div>
                   <div className="flex items-center justify-center gap-3 pt-2">
-                    {doc.driveWebViewLink ? (
+                    {activeDriveLink ? (
                       <a
-                        href={doc.driveWebViewLink}
+                        href={activeDriveLink}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
@@ -349,38 +392,84 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                   </div>
                 </div>
               ) : isRawImage && currentImage ? (
-                /* Standard Image Rendering with Zoom & Stamp */
-                <div
-                  className="relative transition-transform duration-200 origin-center"
-                  style={{
-                    transform: `scale(${zoomLevel / 100}) rotate(${rotation}deg)`,
-                  }}
-                >
-                  <img
-                    src={currentImage.dataUrl}
-                    alt={doc.title}
-                    className="max-h-[500px] w-auto shadow-2xl rounded-sm object-contain bg-white ring-1 ring-slate-700"
-                  />
+                /* Standard Image Rendering with Zoom & Stamp or Google Drive Preview */
+                currentImage.dataUrl ? (
+                  <div
+                    className="relative transition-transform duration-200 origin-center"
+                    style={{
+                      transform: `scale(${zoomLevel / 100}) rotate(${rotation}deg)`,
+                    }}
+                  >
+                    <img
+                      src={currentImage.dataUrl}
+                      alt={doc.title}
+                      className="max-h-[500px] w-auto shadow-2xl rounded-sm object-contain bg-white ring-1 ring-slate-700"
+                    />
 
-                  {/* Stamp Overlay Widget on Image */}
-                  {showElectronicStamp && (
-                    <div className="absolute top-6 left-6 bg-emerald-950/90 border-2 border-emerald-500 text-emerald-300 p-2.5 rounded-lg shadow-xl text-left pointer-events-none backdrop-blur-xs font-sans">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-white border-b border-emerald-500/50 pb-1 mb-1 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-emerald-400" />
-                        ĐÃ CẤP SỐ VĂN BẢN
+                    {/* Stamp Overlay Widget on Image */}
+                    {showElectronicStamp && (
+                      <div className="absolute top-6 left-6 bg-emerald-950/90 border-2 border-emerald-500 text-emerald-300 p-2.5 rounded-lg shadow-xl text-left pointer-events-none backdrop-blur-xs font-sans">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-white border-b border-emerald-500/50 pb-1 mb-1 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-emerald-400" />
+                          ĐÃ CẤP SỐ VĂN BẢN
+                        </div>
+                        <div className="font-mono text-xs font-black text-emerald-300">
+                          {doc.docNumber}
+                        </div>
+                        <div className="text-[9px] text-slate-300">
+                          Ngày: {formatVietnameseDate(doc.registrationDate)}
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-mono">
+                          Mã: {doc.verificationCode}
+                        </div>
                       </div>
-                      <div className="font-mono text-xs font-black text-emerald-300">
-                        {doc.docNumber}
-                      </div>
-                      <div className="text-[9px] text-slate-300">
-                        Ngày: {formatVietnameseDate(doc.registrationDate)}
-                      </div>
-                      <div className="text-[8px] text-slate-400 font-mono">
-                        Mã: {doc.verificationCode}
-                      </div>
+                    )}
+                  </div>
+                ) : targetDriveId ? (
+                  /* Xem trước ảnh lưu trên Google Drive qua Google Drive Preview Frame */
+                  <div className="w-full h-full flex flex-col items-center">
+                    <iframe
+                      src={`https://drive.google.com/file/d/${targetDriveId}/preview`}
+                      title={`Xem trước ảnh ${currentImage.name || doc.docNumber}`}
+                      className="w-full flex-1 min-h-[440px] rounded-lg border border-slate-700 bg-white"
+                      allow="autoplay"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-2 text-center">
+                      * Tệp ảnh ({currentImage.name || `Trang ${activeImageIndex + 1}`}) đang được xem trước trực tiếp từ Google Drive.
+                    </p>
+                  </div>
+                ) : (
+                  /* Fallback khi không có dataUrl và không có driveId */
+                  <div className="w-full max-w-md bg-white rounded-xl p-6 shadow-2xl border border-slate-200 text-slate-900 space-y-4 text-left">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="font-mono text-sm font-bold text-blue-600">{doc.docNumber}</div>
+                      <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 font-bold px-2 py-0.5 rounded">
+                        Tệp lưu trên Drive
+                      </span>
                     </div>
-                  )}
-                </div>
+                    <div>
+                      <h5 className="text-xs font-bold text-slate-500 uppercase">Trích yếu văn bản</h5>
+                      <p className="text-sm font-semibold text-slate-800 mt-1 leading-snug">{doc.title}</p>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Tệp ảnh trang {activeImageIndex + 1} ({currentImage.name || "Bản scan"}) đã được đồng bộ lên Google Drive. Bấm nút dưới để mở trực tiếp:
+                    </p>
+                    {activeDriveLink && (
+                      <div className="pt-2">
+                        <a
+                          href={activeDriveLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
+                        >
+                          <HardDrive className="w-3.5 h-3.5" />
+                          Mở xem trên Google Drive
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )
               ) : (
                 /* Fallback: Clear Document Presentation (Tránh broken image & alt text đè tem) */
                 <div className="w-full max-w-md bg-white rounded-xl p-6 shadow-2xl border border-slate-200 text-slate-900 space-y-4 text-left">
@@ -404,10 +493,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                       <span className="font-medium text-slate-800">{doc.documentDate}</span>
                     </div>
                   </div>
-                  {doc.driveWebViewLink && (
+                  {activeDriveLink && (
                     <div className="pt-2">
                       <a
-                        href={doc.driveWebViewLink}
+                        href={activeDriveLink}
                         target="_blank"
                         rel="noreferrer"
                         className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
@@ -452,7 +541,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                       ) : img.dataUrl ? (
                         <img src={img.dataUrl} alt={`Trang ${idx + 1}`} className="w-full h-full object-cover" />
                       ) : (
-                        <FileText className="w-5 h-5 text-slate-400" />
+                        <div className="flex flex-col items-center justify-center text-amber-400">
+                          <File className="w-5 h-5" />
+                          <span className="text-[7px] font-bold">ẢNH</span>
+                        </div>
                       )}
                       <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[8px] text-center">
                         {idx + 1}

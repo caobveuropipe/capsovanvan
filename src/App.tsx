@@ -55,6 +55,7 @@ import {
   setupVisibilityAndFocusSync,
   resetRealtimeCircuitBreaker,
 } from "./services/realtimeService";
+import { compileImagesToPdf } from "./utils/pdfGenerator";
 
 export default function App() {
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
@@ -402,9 +403,49 @@ export default function App() {
     });
   };
 
-  // New Document Created handler (Includes BYOS Google Drive upload)
+  // New Document Created handler (Includes BYOS Google Drive upload & Option B: Auto Compile Images to PDF)
   const handleDocumentCreated = async (newDoc: DocumentRecord) => {
     let docToSave = { ...newDoc };
+
+    // Phương án B: Tự động ghép toàn bộ các trang ảnh (JPG/PNG/WEBP/Scan) thành 1 tệp PDF duy nhất
+    const hasRawImages = docToSave.images?.some(
+      (img) =>
+        !img.mimeType?.includes("pdf") &&
+        !img.name?.toLowerCase().endsWith(".pdf") &&
+        !img.dataUrl?.startsWith("data:application/pdf")
+    );
+
+    if (docToSave.images && docToSave.images.length > 0 && hasRawImages) {
+      try {
+        const rawCount = docToSave.images.length;
+        const safeTitle = docToSave.title.replace(/[\/\\:?*"<>|]/g, "_").slice(0, 40).trim();
+        const pdfFileName = `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}.pdf`;
+
+        const compiled = await compileImagesToPdf(docToSave.images);
+
+        docToSave.images = [
+          {
+            id: `pdf-${Date.now()}`,
+            name: pdfFileName,
+            mimeType: "application/pdf",
+            dataUrl: compiled.dataUrl,
+            size: compiled.size,
+            capturedAt: new Date().toISOString(),
+            pageNumber: 1,
+          },
+        ];
+
+        docToSave.history.push({
+          id: `h-pdf-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          action: "SỐ HÓA PDF TỔNG HỢP",
+          user: "Hệ thống Cấp số",
+          details: `Đã tự động ghép ${rawCount} trang ảnh scan thành 1 tệp PDF duy nhất [${pdfFileName}]`,
+        });
+      } catch (compileErr) {
+        console.warn("Không thể ghép ảnh thành PDF, giữ nguyên ảnh gốc:", compileErr);
+      }
+    }
 
     // If Google Drive is configured and user enabled auto-upload
     const currentDriveConfig = getGoogleDriveConfig();
@@ -417,17 +458,17 @@ export default function App() {
       if (isDriveTokenExpired(currentDriveConfig)) {
         showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm vào icon Drive ở góc trên để gia hạn phiên.", "error");
       } else {
-        showToast("Đang đồng bộ bản scan lên Google Drive...", "info");
+        showToast("Đang đồng bộ tệp văn bản lên Google Drive...", "info");
         try {
           const safeTitle = docToSave.title.replace(/[\/\\:?*"<>|]/g, "_").slice(0, 40).trim();
           let primaryResult: any = null;
 
-          // Tải toàn bộ các trang ảnh lên Google Drive (hỗ trợ nhiều trang chụp camera hoặc tải tệp)
+          // Tải tệp văn bản lên Google Drive (1 file PDF tổng hợp hoặc các tệp đính kèm)
           for (let i = 0; i < docToSave.images.length; i++) {
             const curImg = docToSave.images[i];
-            let ext = "jpg";
+            let ext = "pdf";
             if (curImg.name && curImg.name.includes(".")) {
-              ext = curImg.name.split(".").pop()?.toLowerCase() || "jpg";
+              ext = curImg.name.split(".").pop()?.toLowerCase() || "pdf";
             } else if (curImg.mimeType) {
               if (curImg.mimeType.includes("pdf")) ext = "pdf";
               else if (curImg.mimeType.includes("png")) ext = "png";
@@ -435,15 +476,20 @@ export default function App() {
             }
 
             const pageSuffix = docToSave.images.length > 1 ? `_trang${i + 1}` : "";
-            const cleanDocName = `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}${pageSuffix}.${ext}`;
+            const cleanDocName = curImg.name || `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}${pageSuffix}.${ext}`;
 
             const driveResult = await uploadFileToGoogleDrive(
               currentDriveConfig.accessToken,
               currentDriveConfig.folderId,
               cleanDocName,
               curImg.dataUrl,
-              `Văn bản số ${docToSave.docNumber}${docToSave.images.length > 1 ? ` (Trang ${i + 1}/${docToSave.images.length})` : ""}: ${docToSave.title}`
+              `Văn bản số ${docToSave.docNumber}${docToSave.images.length > 1 ? ` (Tệp ${i + 1}/${docToSave.images.length})` : ""}: ${docToSave.title}`
             );
+
+            // Gán Drive metadata trực tiếp vào từng image item
+            curImg.driveFileId = driveResult.id;
+            curImg.driveWebViewLink = driveResult.webViewLink;
+            curImg.driveThumbnailLink = driveResult.thumbnailLink;
 
             if (i === 0) {
               primaryResult = driveResult;
@@ -458,11 +504,11 @@ export default function App() {
             timestamp: new Date().toISOString(),
             action: "ĐỒNG BỘ GOOGLE DRIVE",
             user: currentDriveConfig.userEmail || "Google Drive Sync",
-            details: `Đã lưu ${docToSave.images.length} trang scan lên thư mục Google Drive: [${primaryResult?.name || docToSave.docNumber}]`,
+            details: `Đã lưu tệp văn bản gốc lên thư mục Google Drive: [${primaryResult?.name || docToSave.docNumber}]`,
           });
 
           showToast(
-            `Đã lưu ${docToSave.images.length > 1 ? `${docToSave.images.length} trang scan` : "bản scan"} lên Google Drive thành công!`,
+            `Đã lưu tệp văn bản gốc [${primaryResult?.name || docToSave.docNumber}] lên Google Drive thành công!`,
             "success"
           );
         } catch (driveErr: any) {

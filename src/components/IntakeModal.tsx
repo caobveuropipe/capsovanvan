@@ -17,6 +17,9 @@ import {
   FileCheck,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  RotateCw,
   Copy,
   Check,
 } from "lucide-react";
@@ -204,38 +207,72 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     setTimeout(() => startCamera(), 100);
   };
 
-  // Handle direct file uploads (Image or PDF)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle direct file uploads (Image or PDF) - Sắp xếp tự nhiên theo tên file và đọc tuần tự bằng Promise.all
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const fileList: File[] = Array.from(files);
-    fileList.forEach((file: File, index: number) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        const newImg: DocumentImage = {
-          id: `img-${Date.now()}-${index}`,
-          name: file.name,
-          dataUrl,
-          mimeType: file.type || "image/jpeg",
-          size: file.size,
-          capturedAt: new Date().toISOString(),
-          pageNumber: images.length + index + 1,
-        };
+    // Sắp xếp tự nhiên theo tên file (ví dụ trang 1 trước trang 2, không phụ thuộc vào tốc độ đọc ổ đĩa)
+    const fileList: File[] = (Array.from(files) as File[]).sort((a: File, b: File) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    );
 
-        setImages((prev) => {
-          const updated = [...prev, newImg];
-          if (updated.length === 1 || prev.length === 0) {
-            setSelectedImageIndex(0);
-            if (!title) {
-              setTitle(file.name.replace(/\.[^/.]+$/, ""));
-            }
-          }
-          return updated;
-        });
-      };
-      reader.readAsDataURL(file);
+    const readPromises = fileList.map((file, index) => {
+      return new Promise<DocumentImage>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          resolve({
+            id: `img-${Date.now()}-${index}`,
+            name: file.name,
+            dataUrl: event.target?.result as string,
+            mimeType: file.type || "image/jpeg",
+            size: file.size,
+            capturedAt: new Date().toISOString(),
+            pageNumber: images.length + index + 1,
+            rotation: 0,
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    const loadedImages = await Promise.all(readPromises);
+    setImages((prev) => {
+      const updated = [...prev, ...loadedImages].map((img, i) => ({
+        ...img,
+        pageNumber: i + 1,
+      }));
+      if (prev.length === 0 && updated.length > 0) {
+        setSelectedImageIndex(0);
+        if (!title) {
+          setTitle(fileList[0].name.replace(/\.[^/.]+$/, ""));
+        }
+      }
+      return updated;
+    });
+  };
+
+  // Đổi thứ tự trang (Lên / Xuống)
+  const handleMovePage = (index: number, direction: "up" | "down") => {
+    setImages((prev) => {
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return copy.map((img, i) => ({ ...img, pageNumber: i + 1 }));
+    });
+  };
+
+  // Xoay trang ảnh 90 độ
+  const handleRotatePage = (index: number) => {
+    setImages((prev) => {
+      return prev.map((img, i) => {
+        if (i !== index) return img;
+        const currentRot = img.rotation || 0;
+        return { ...img, rotation: (currentRot + 90) % 360 };
+      });
     });
   };
   // Load sample test document for Upload tab
@@ -736,24 +773,75 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                           {images.map((img, idx) => (
                             <div
                               key={img.id}
-                              className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                              className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs gap-2"
                             >
-                              <div className="flex items-center gap-2 truncate min-w-0">
-                                <span className="w-5 h-5 rounded bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0">
-                                  {idx + 1}
-                                </span>
-                                <span className="font-medium text-slate-800 truncate text-[11px]" title={img.name}>
-                                  {img.name}
-                                </span>
+                              <div className="flex items-center gap-2.5 truncate min-w-0">
+                                {/* Thumbnail xem trước nhỏ kèm góc xoay */}
+                                <div className="w-8 h-10 rounded border border-slate-300 overflow-hidden shrink-0 bg-white flex items-center justify-center shadow-xs">
+                                  {img.dataUrl.startsWith("data:image/") ? (
+                                    <img
+                                      src={img.dataUrl}
+                                      alt={`Trang ${idx + 1}`}
+                                      style={{ transform: `rotate(${img.rotation || 0}deg)` }}
+                                      className="max-w-full max-h-full object-contain transition-transform"
+                                    />
+                                  ) : (
+                                    <FileText className="w-4 h-4 text-rose-500" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 truncate">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-[10px] shrink-0">
+                                      Trang {idx + 1}
+                                    </span>
+                                    <span className="font-medium text-slate-800 truncate text-[11px]" title={img.name}>
+                                      {img.name}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    {(img.size / 1024).toFixed(1)} KB {img.rotation ? `• Đã xoay ${img.rotation}°` : ""}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[10px] text-slate-500 font-medium">
-                                  Trang {idx + 1} • {(img.size / 1024).toFixed(1)} KB
-                                </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {/* Nút Di chuyển lên */}
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMovePage(idx, "up")}
+                                  className={`p-1 rounded cursor-pointer ${
+                                    idx === 0 ? "text-slate-300 cursor-not-allowed" : "text-slate-500 hover:text-blue-600 hover:bg-slate-200"
+                                  }`}
+                                  title="Đưa trang này lên trước"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                {/* Nút Di chuyển xuống */}
+                                <button
+                                  type="button"
+                                  disabled={idx === images.length - 1}
+                                  onClick={() => handleMovePage(idx, "down")}
+                                  className={`p-1 rounded cursor-pointer ${
+                                    idx === images.length - 1 ? "text-slate-300 cursor-not-allowed" : "text-slate-500 hover:text-blue-600 hover:bg-slate-200"
+                                  }`}
+                                  title="Đưa trang này xuống dưới"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                                {/* Nút Xoay 90 độ */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRotatePage(idx)}
+                                  className="text-slate-500 hover:text-emerald-600 p-1 rounded hover:bg-slate-200 cursor-pointer"
+                                  title="Xoay trang 90 độ"
+                                >
+                                  <RotateCw className="w-3.5 h-3.5" />
+                                </button>
+                                {/* Nút Xóa */}
                                 <button
                                   type="button"
                                   onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}
-                                  className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-200 cursor-pointer"
+                                  className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-200 cursor-pointer ml-1"
                                   title="Xóa trang này"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />

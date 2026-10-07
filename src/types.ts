@@ -29,6 +29,9 @@ export interface DocumentImage {
   capturedAt: string;
   pageNumber: number;
   rotation?: number;
+  driveFileId?: string;
+  driveWebViewLink?: string;
+  driveThumbnailLink?: string;
 }
 
 export interface EmailAttachment {

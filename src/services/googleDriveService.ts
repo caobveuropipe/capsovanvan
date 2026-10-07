@@ -372,7 +372,17 @@ export async function findOrCreateDriveFolder(
   folderName: string,
   parentFolderId?: string
 ): Promise<{ id: string; name: string }> {
-  // 1. Kiểm tra xem trên toàn bộ Drive đã có file database vcc_documents_database.json chưa
+  // 1. Nếu đang tìm folder con cụ thể (có parentFolderId), tìm hoặc tạo folder con bên trong parentFolderId
+  if (parentFolderId && parentFolderId !== "root") {
+    const existing = await findDriveFolderByName(accessToken, folderName, parentFolderId);
+    if (existing) {
+      return existing;
+    }
+    return createDriveFolder(accessToken, folderName, parentFolderId);
+  }
+
+  // 2. Chỉ khi tìm thư mục ứng dụng chính (không có parentFolderId cụ thể):
+  // Kiểm tra xem trên toàn bộ Drive đã có file database vcc_documents_database.json chưa
   try {
     const existingDb = await findDriveFileByName(accessToken, DRIVE_DB_FILENAME);
     if (existingDb && existingDb.parents && existingDb.parents.length > 0) {
@@ -393,13 +403,13 @@ export async function findOrCreateDriveFolder(
     console.warn("Không thể tìm file database cũ:", dbErr);
   }
 
-  // 2. Tìm thư mục theo tên (lấy thư mục cũ nhất đã tạo)
+  // 3. Tìm thư mục theo tên (lấy thư mục cũ nhất đã tạo)
   const existing = await findDriveFolderByName(accessToken, folderName, parentFolderId);
   if (existing) {
     return existing;
   }
 
-  // 3. Nếu chưa có bất kỳ thư mục nào, mới tạo thư mục mới
+  // 4. Nếu chưa có bất kỳ thư mục nào, mới tạo thư mục mới
   return createDriveFolder(accessToken, folderName, parentFolderId);
 }
 
@@ -519,21 +529,19 @@ export async function listDriveFolders(
   }
 }
 
-// Delete or remove file from Google Drive (Tương thích với cả quyền Editor trên thư mục Được chia sẻ)
+// Delete or remove file from Google Drive (Luôn chuyển vào thư mục con _ThungRac_DaXoa để minh bạch và dễ khôi phục)
 export async function deleteFileFromGoogleDrive(
   accessToken: string,
   fileId: string,
   folderId?: string
 ): Promise<boolean> {
   try {
-    // 1. Tự động chuyển file vào thư mục con "_ThungRac_DaXoa" bên trong thư mục chia sẻ
-    // Khi người dùng có quyền "Người chỉnh sửa" (Editor) trên thư mục của người khác:
-    // Google Drive cho phép di chuyển file (addParents + removeParents) sang thư mục con nội bộ.
-    // Điều này giúp file biến mất khỏi thư mục chính ngay lập tức, đồng thời vẫn lưu trữ an toàn trong thư mục rác.
+    // 1. Luôn di chuyển file vào thư mục con "_ThungRac_DaXoa" bên trong thư mục làm việc chung
+    // Giúp file biến mất khỏi danh sách chính, cả phòng đều thấy và có thể đối soát/khôi phục bất cứ lúc nào
     if (folderId && folderId !== "root") {
       try {
         const trashSubfolder = await findOrCreateDriveFolder(accessToken, "_ThungRac_DaXoa", folderId);
-        if (trashSubfolder && trashSubfolder.id) {
+        if (trashSubfolder && trashSubfolder.id && trashSubfolder.id !== folderId) {
           const moveRes = await fetch(
             `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${encodeURIComponent(trashSubfolder.id)}&removeParents=${encodeURIComponent(folderId)}&supportsAllDrives=true`,
             {
@@ -546,15 +554,15 @@ export async function deleteFileFromGoogleDrive(
             }
           );
           if (moveRes.ok || moveRes.status === 404) {
-            console.info(`[Drive Asset] Đã di chuyển tệp ${fileId} vào thư mục con [_ThungRac_DaXoa] thành công.`);
+            console.info(`[Drive Asset] Đã chuyển tệp ${fileId} vào thư mục con [_ThungRac_DaXoa] thành công.`);
             return true;
           }
         }
       } catch (moveErr) {
-        console.warn("[Drive Asset] Không thể di chuyển vào thư mục rác con, thử gỡ liên kết trực tiếp:", moveErr);
+        console.warn("[Drive Asset] Không thể chuyển vào thư mục _ThungRac_DaXoa, thử gỡ liên kết trực tiếp:", moveErr);
       }
 
-      // Fallback 1b: Gỡ file khỏi thư mục cha (removeParents)
+      // Fallback 1b: Gỡ file khỏi thư mục cha nếu không chuyển được
       try {
         const removeRes = await fetch(
           `https://www.googleapis.com/drive/v3/files/${fileId}?removeParents=${encodeURIComponent(folderId)}&supportsAllDrives=true`,
@@ -568,14 +576,15 @@ export async function deleteFileFromGoogleDrive(
           }
         );
         if (removeRes.ok || removeRes.status === 404) {
+          console.info(`[Drive Asset] Đã gỡ tệp ${fileId} khỏi thư mục làm việc.`);
           return true;
         }
       } catch (parentErr) {
-        // Tiếp tục thử các phương thức khác
+        // Tiếp tục thử đưa vào thùng rác
       }
     }
 
-    // 2. Thử đưa vào Thùng rác chính của Google Drive (trashed: true)
+    // 2. Fallback nếu không có folderId cụ thể: Đưa vào Thùng rác Google Drive (trashed: true)
     try {
       const trashRes = await fetch(
         `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`,
@@ -589,34 +598,16 @@ export async function deleteFileFromGoogleDrive(
         }
       );
       if (trashRes.ok || trashRes.status === 404) {
+        console.info(`[Drive Asset] Đã đưa tệp ${fileId} vào Thùng rác Google Drive.`);
         return true;
       }
     } catch (trashErr) {
-      // Tiếp tục thử DELETE vĩnh viễn
-    }
-
-    // 3. Thử xóa vĩnh viễn (DELETE - áp dụng khi người dùng là chủ sở hữu file)
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (response.ok || response.status === 204 || response.status === 404) {
-      return true;
-    }
-
-    if (response.status === 403) {
-      console.info(
-        `[Drive Asset] Tệp ${fileId} thuộc quyền sở hữu của thành viên khác trong thư mục chia sẻ (Google Drive giới hạn quyền DELETE của Editor). Dấu xóa văn bản đã được ghi nhận an toàn vào sổ đăng ký.`
-      );
-      return false;
+      // Bỏ qua
     }
 
     return false;
   } catch (err) {
-    console.warn("Lỗi khi xóa file trên Google Drive:", err);
+    console.warn(`Lỗi khi dọn dẹp tệp ${fileId} trên Google Drive:`, err);
     return false;
   }
 }
@@ -987,6 +978,9 @@ function sanitizeDatabasePayload(payload: DriveDatabasePayload): DriveDatabasePa
       capturedAt: img.capturedAt,
       pageNumber: img.pageNumber,
       rotation: img.rotation,
+      driveFileId: img.driveFileId,
+      driveWebViewLink: img.driveWebViewLink,
+      driveThumbnailLink: img.driveThumbnailLink,
       // Do NOT include img.dataUrl here (already uploaded as a separate file on Drive)
     }));
 
