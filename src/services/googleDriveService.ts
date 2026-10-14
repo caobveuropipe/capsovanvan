@@ -469,6 +469,78 @@ export async function getDriveFolderDetails(
   }
 }
 
+// Đăng nhập hệ thống bằng Google Workspace / Google Account
+export async function loginWithGoogle(options?: {
+  prompt?: "" | "consent" | "select_account";
+  clientId?: string;
+}): Promise<GoogleDriveConfig> {
+  const currentConfig = getGoogleDriveConfig();
+  const clientId = (options?.clientId || currentConfig.clientId || DEFAULT_GOOGLE_CLIENT_ID).trim();
+  const prompt = options?.prompt !== undefined ? options.prompt : (currentConfig.userEmail ? "select_account" : "consent");
+
+  const tokenResult = await requestGoogleAccessToken({
+    clientId,
+    prompt,
+    hint: currentConfig.userEmail,
+  });
+
+  const accessToken = tokenResult.accessToken;
+  const expiresAt = tokenResult.expiresAt;
+
+  // Lấy hồ sơ tài khoản Google
+  const userData = await fetchGoogleUserProfile(accessToken);
+
+  // Nhận diện hoặc tạo thư mục mặc định nếu chưa cấu hình
+  let targetFolderId = currentConfig.folderId;
+  let targetFolderName = currentConfig.folderName;
+
+  if (!targetFolderId) {
+    try {
+      const folderRes = await findOrCreateDriveFolder(accessToken, "[VCC] Sổ Văn Bản Điện Tử");
+      targetFolderId = folderRes.id;
+      targetFolderName = folderRes.name || "[VCC] Sổ Văn Bản Điện Tử";
+    } catch (fErr) {
+      console.warn("Could not find or create folder, using root", fErr);
+      targetFolderId = "root";
+      targetFolderName = "Google Drive (Thư mục gốc)";
+    }
+  }
+
+  const updatedConfig: GoogleDriveConfig = {
+    ...currentConfig,
+    clientId,
+    userEmail: userData.email,
+    userName: userData.name,
+    userAvatar: userData.picture,
+    accessToken,
+    tokenExpiresAt: expiresAt,
+    folderId: targetFolderId,
+    folderName: targetFolderName,
+  };
+
+  saveGoogleDriveConfig(updatedConfig);
+  return updatedConfig;
+}
+
+// Đăng xuất khỏi Google session hiện tại (giữ lại cấu hình và thông tin tài khoản gần nhất để tiện đăng nhập lại)
+export function logoutGoogle(clearAll: boolean = false): GoogleDriveConfig {
+  const current = getGoogleDriveConfig();
+  let updated: GoogleDriveConfig;
+  if (clearAll) {
+    updated = {
+      ...DEFAULT_DRIVE_CONFIG,
+    };
+  } else {
+    updated = {
+      ...current,
+      accessToken: undefined,
+      tokenExpiresAt: undefined,
+    };
+  }
+  saveGoogleDriveConfig(updated);
+  return updated;
+}
+
 // Liệt kê CHỈ các thư mục có chứa tệp tin vcc_documents_database.json trên Google Drive
 export async function listDriveFolders(
   accessToken: string,

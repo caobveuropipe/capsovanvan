@@ -13,7 +13,8 @@ import { PrintDocumentModal } from "./components/PrintDocumentModal";
 import { GoogleDriveConfigModal } from "./components/GoogleDriveConfigModal";
 import { DashboardStats } from "./components/DashboardStats";
 import { MobileBottomNav } from "./components/MobileBottomNav";
-import { HardDrive, AlertCircle, ArrowRight, FolderPlus } from "lucide-react";
+import { LoginScreen } from "./components/LoginScreen";
+import { HardDrive, AlertCircle, ArrowRight, FolderPlus, FileText } from "lucide-react";
 import { DocumentCategory, DocumentRecord } from "./types";
 import {
   getCategories,
@@ -47,6 +48,8 @@ import {
   DriveDatabasePayload,
   isDriveTokenExpired,
   renewGoogleDriveSession,
+  loginWithGoogle,
+  logoutGoogle,
 } from "./services/googleDriveService";
 import {
   initRealtime,
@@ -72,6 +75,15 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDriveSyncing, setIsDriveSyncing] = useState<boolean>(false);
   const [isDriveRenewing, setIsDriveRenewing] = useState<boolean>(false);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("docnum_offline_mode") === "true";
+    } catch {
+      return false;
+    }
+  });
 
   // Toast Notification state
   const [toastNotification, setToastNotification] = useState<{
@@ -101,12 +113,18 @@ export default function App() {
       resetRealtimeCircuitBreaker();
     }
 
-    // Nếu token đã hết hạn, không gửi request nền để tránh báo lỗi đỏ 401 trên console
-    if (isDriveTokenExpired(currentConfig)) {
-      if (isManual) {
-        showToast("Phiên đăng nhập Google Drive đã hết hạn. Hãy bấm vào icon Drive để gia hạn phiên.", "error");
+    // Nếu token đã hết hạn, cố gắng làm mới ngầm tự động trước
+    let activeConfig = currentConfig;
+    if (isDriveTokenExpired(activeConfig) && activeConfig.userEmail) {
+      try {
+        activeConfig = await renewGoogleDriveSession({ prompt: "" });
+        setDriveConfig(activeConfig);
+      } catch (renewErr) {
+        if (isManual) {
+          showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng đăng nhập lại.", "error");
+        }
+        return;
       }
-      return;
     }
 
     setIsDriveSyncing(true);
@@ -249,7 +267,7 @@ export default function App() {
         const updatedConfig = { ...currentConfig, tokenExpiresAt: Date.now() - 1000 };
         saveGoogleDriveConfig(updatedConfig);
         if (isManual) {
-          showToast("Phiên đăng nhập Google Drive đã hết hạn. Hãy bấm vào icon Drive để gia hạn phiên.", "error");
+          showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng đăng nhập lại để tiếp tục đồng bộ.", "error");
         }
       } else {
         console.warn("Lỗi đồng bộ cơ sở dữ liệu Google Drive:", syncErr);
@@ -262,6 +280,69 @@ export default function App() {
     }
   };
 
+  // Tự động làm mới phiên Google Drive ngầm trước khi hết hạn 10 phút (Silent Background Auto-Renew)
+  useEffect(() => {
+    if (!driveConfig.userEmail) return;
+
+    const intervalId = setInterval(async () => {
+      const cfg = getGoogleDriveConfig();
+      if (!cfg.userEmail || !cfg.tokenExpiresAt) return;
+
+      const remainingMs = cfg.tokenExpiresAt - Date.now();
+      // Nếu sắp hết hạn trong vòng 10 phút, tự làm mới ngầm êm ái
+      if (remainingMs < 10 * 60 * 1000) {
+        try {
+          const updated = await renewGoogleDriveSession({ prompt: "" });
+          setDriveConfig(updated);
+          console.log("Đã tự động gia hạn token Google Drive ngầm thành công.");
+        } catch (silentErr) {
+          console.debug("Silent renew đang chờ tương tác người dùng:", silentErr);
+        }
+      }
+    }, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [driveConfig.userEmail]);
+
+  // Đăng nhập hệ thống qua Google Workspace
+  const handleLoginGoogle = async () => {
+    setIsLoggingIn(true);
+    setLoginError(null);
+    try {
+      const updated = await loginWithGoogle({ prompt: "select_account" });
+      setDriveConfig(updated);
+      setIsOfflineMode(false);
+      localStorage.removeItem("docnum_offline_mode");
+      showToast(`Đăng nhập Google Workspace (${updated.userEmail}) thành công!`, "success");
+      // Tự động kéo dữ liệu về ngay sau khi đăng nhập
+      setTimeout(() => {
+        syncWithGoogleDrive(false);
+      }, 500);
+    } catch (err: any) {
+      console.error("Lỗi đăng nhập Google:", err);
+      setLoginError(err.message || "Đăng nhập Google không thành công");
+      throw err;
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Đăng xuất tài khoản Google
+  const handleLogoutGoogle = () => {
+    const updated = logoutGoogle(false);
+    setDriveConfig(updated);
+    setIsOfflineMode(false);
+    localStorage.removeItem("docnum_offline_mode");
+    showToast("Đã đăng xuất tài khoản Google.", "info");
+  };
+
+  // Tiếp tục ở chế độ ngoại tuyến (Offline)
+  const handleContinueOffline = () => {
+    setIsOfflineMode(true);
+    localStorage.setItem("docnum_offline_mode", "true");
+    showToast("Đang ở chế độ xem ngoại tuyến.", "info");
+  };
+
   // Gia hạn phiên làm việc Google Drive 1 chạm (Tự động nhận diện tài khoản cũ, không hỏi lại quyền)
   const handleRenewDriveSession = async () => {
     setIsDriveRenewing(true);
@@ -269,7 +350,6 @@ export default function App() {
       const updated = await renewGoogleDriveSession();
       setDriveConfig(updated);
       showToast(`Đã gia hạn phiên Google Drive (${updated.userEmail}) thành công!`, "success");
-      // Tự động kéo dữ liệu mới nhất về ngay sau khi gia hạn
       setTimeout(() => {
         syncWithGoogleDrive(false);
       }, 500);
@@ -346,8 +426,17 @@ export default function App() {
         setDocuments(loadedDocs);
 
         // Auto-sync with Google Drive if already connected
-        const currentConfig = getGoogleDriveConfig();
-        if (currentConfig.accessToken) {
+        let currentConfig = getGoogleDriveConfig();
+        if (currentConfig.userEmail && isDriveTokenExpired(currentConfig)) {
+          try {
+            currentConfig = await renewGoogleDriveSession({ prompt: "" });
+            setDriveConfig(currentConfig);
+          } catch (silentErr) {
+            console.debug("Silent renew on mount:", silentErr);
+          }
+        }
+
+        if (currentConfig.accessToken && !isDriveTokenExpired(currentConfig)) {
           await syncWithGoogleDrive(false);
         }
       } catch (e) {
@@ -455,8 +544,18 @@ export default function App() {
       docToSave.images &&
       docToSave.images.length > 0
     ) {
-      if (isDriveTokenExpired(currentDriveConfig)) {
-        showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm vào icon Drive ở góc trên để gia hạn phiên.", "error");
+      let activeDriveConfig = currentDriveConfig;
+      if (isDriveTokenExpired(activeDriveConfig) && activeDriveConfig.userEmail) {
+        try {
+          activeDriveConfig = await renewGoogleDriveSession({ prompt: "" });
+          setDriveConfig(activeDriveConfig);
+        } catch (renewErr) {
+          console.debug("Silent renew during upload failed:", renewErr);
+        }
+      }
+
+      if (isDriveTokenExpired(activeDriveConfig)) {
+        showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng đăng nhập lại để tải tệp lên Drive.", "error");
       } else {
         showToast("Đang đồng bộ tệp văn bản lên Google Drive...", "info");
         try {
@@ -479,8 +578,8 @@ export default function App() {
             const cleanDocName = curImg.name || `${docToSave.docNumber.replace(/[\/\\:]/g, "-")}_${docToSave.categoryCode}_${safeTitle}${pageSuffix}.${ext}`;
 
             const driveResult = await uploadFileToGoogleDrive(
-              currentDriveConfig.accessToken,
-              currentDriveConfig.folderId,
+              activeDriveConfig.accessToken,
+              activeDriveConfig.folderId,
               cleanDocName,
               curImg.dataUrl,
               `Văn bản số ${docToSave.docNumber}${docToSave.images.length > 1 ? ` (Tệp ${i + 1}/${docToSave.images.length})` : ""}: ${docToSave.title}`
@@ -515,7 +614,7 @@ export default function App() {
           console.warn("Không thể tải tệp lên Google Drive:", driveErr);
           const errMsg = driveErr.message || "";
           if (errMsg.includes("invalid authentication") || errMsg.includes("401") || errMsg.includes("Invalid Credentials")) {
-            showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm vào icon Drive ở góc trên để gia hạn phiên.", "error");
+            showToast("Phiên đăng nhập Google Drive đã hết hạn. Vui lòng đăng nhập lại.", "error");
           } else {
             showToast(`Chưa thể tải lên Google Drive: ${errMsg || "Lỗi kết nối"}`, "error");
           }
@@ -701,6 +800,34 @@ export default function App() {
     setIsGoogleDriveOpen(true);
   };
 
+  // 1. Loading splash screen khi đang khởi tạo dữ liệu
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xl shadow-blue-500/30 animate-pulse mb-4">
+          <FileText className="w-6 h-6 text-white" />
+        </div>
+        <p className="text-sm font-semibold text-slate-300">Đang tải dữ liệu Sổ Cấp Số Văn Bản...</p>
+      </div>
+    );
+  }
+
+  // 2. Màn hình Đăng nhập (Authentication Gate)
+  const isTokenExpired = isDriveTokenExpired(driveConfig);
+  const requiresLogin = (!driveConfig.userEmail || isTokenExpired) && !isOfflineMode;
+
+  if (requiresLogin) {
+    return (
+      <LoginScreen
+        config={driveConfig}
+        onLogin={handleLoginGoogle}
+        onContinueOffline={handleContinueOffline}
+        isLoading={isLoggingIn}
+        errorMessage={loginError}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       {/* Top Navigation */}
@@ -712,15 +839,21 @@ export default function App() {
         onOpenGoogleDrive={() => setIsGoogleDriveOpen(true)}
         onSyncDrive={() => syncWithGoogleDrive(true)}
         onRenewDrive={handleRenewDriveSession}
+        onLogout={handleLogoutGoogle}
+        onLogin={handleLoginGoogle}
         isDriveConnected={!!driveConfig.userEmail}
-        isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
+        isDriveTokenExpired={isTokenExpired}
         isRenewingDrive={isDriveRenewing}
         isSyncing={isDriveSyncing}
+        userName={driveConfig.userName}
+        userEmail={driveConfig.userEmail}
+        userAvatar={driveConfig.userAvatar}
+        folderName={driveConfig.folderName}
         totalDocsCount={documents.length}
       />
 
       {/* Main View Area */}
-      <main className="flex-1 pb-24 md:pb-12">
+      <main className="flex-1 pb-20 md:pb-2">
         {/* Banner thông báo nhắc nhở nếu chưa kết nối hoặc chưa cấu hình folder Google Drive */}
         {!driveConfig.userEmail ? (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
@@ -732,23 +865,23 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-sm text-slate-800">
-                      Chưa kết nối Google Drive lưu trữ chung
+                      Đang ở chế độ xem Ngoại tuyến (Offline)
                     </span>
-                    <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 rounded-md border border-amber-200">
-                      Khuyến nghị
+                    <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 rounded-md border border-blue-200">
+                      Ngoại tuyến
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Hãy kết nối Google Drive và cấu hình thư mục lưu trữ để tự động đồng bộ sổ văn bản, lưu file scan và dùng chung dữ liệu trên nhiều thiết bị.
+                    Đăng nhập Google Workspace để tự động đồng bộ sổ văn bản, lưu trữ hồ sơ tập trung và dùng chung nhiều thiết bị.
                   </p>
                 </div>
               </div>
 
               <button
-                onClick={() => setIsGoogleDriveOpen(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 rounded-xl shadow-sm transition-all cursor-pointer shrink-0 hover:shadow-md hover:scale-[1.02]"
+                onClick={handleLoginGoogle}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-sm transition-all cursor-pointer shrink-0 hover:shadow-md hover:scale-[1.02]"
               >
-                <span>Cấu hình Google Drive ngay</span>
+                <span>Đăng nhập Google Workspace</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>

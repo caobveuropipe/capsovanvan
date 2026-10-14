@@ -11,6 +11,12 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Cho phép Google OAuth popup và iframe liên lạc cross-origin không bị chặn bởi trình duyệt
+app.use((_req, res, next) => {
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  next();
+});
+
 // Create HTTP server wrapping Express
 const server = http.createServer(app);
 
