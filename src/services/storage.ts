@@ -1,4 +1,5 @@
 import { DocumentCategory, DocumentRecord } from "../types";
+import initialMetadataOptions from "../data/metadataOptions.json";
 
 const DB_NAME = "DocNumberingDB";
 const DB_VERSION = 1;
@@ -655,5 +656,104 @@ export function pruneTombstones(
   }
 
   return remaining;
+}
+
+// ==========================================
+// FORM METADATA OPTIONS (Đơn vị, Người ký, Nơi nhận, Phòng ban)
+// ==========================================
+
+export interface FormMetadataOptions {
+  issuingAuthorities: string[];
+  signers: string[];
+  recipients: string[];
+  departments: string[];
+}
+
+export type FormMetadataField = keyof FormMetadataOptions;
+
+export const DEFAULT_FORM_METADATA_OPTIONS: FormMetadataOptions = {
+  issuingAuthorities: [],
+  signers: [],
+  recipients: [],
+  departments: [],
+};
+
+const LOCAL_STORAGE_METADATA_OPTIONS_KEY = "doc_form_metadata_options_v1";
+
+/**
+ * Lấy danh sách options cho các trường biểu mẫu:
+ * Khởi tạo từ file JSON và hợp nhất với danh sách do người dùng tự thêm trong localStorage
+ */
+export function getFormMetadataOptions(): FormMetadataOptions {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_METADATA_OPTIONS_KEY);
+    const initial: FormMetadataOptions = {
+      issuingAuthorities: Array.isArray(initialMetadataOptions?.issuingAuthorities)
+        ? initialMetadataOptions.issuingAuthorities
+        : [],
+      signers: Array.isArray(initialMetadataOptions?.signers)
+        ? initialMetadataOptions.signers
+        : [],
+      recipients: Array.isArray(initialMetadataOptions?.recipients)
+        ? initialMetadataOptions.recipients
+        : [],
+      departments: Array.isArray(initialMetadataOptions?.departments)
+        ? initialMetadataOptions.departments
+        : [],
+    };
+
+    if (!raw) {
+      return initial;
+    }
+
+    const parsed = JSON.parse(raw);
+    const mergeUnique = (base: string[], userAdded: unknown): string[] => {
+      const arr = Array.isArray(userAdded) ? (userAdded as string[]) : [];
+      const set = new Set<string>(base);
+      arr.forEach((item) => {
+        if (typeof item === "string" && item.trim()) {
+          set.add(item.trim());
+        }
+      });
+      return Array.from(set);
+    };
+
+    return {
+      issuingAuthorities: mergeUnique(initial.issuingAuthorities, parsed.issuingAuthorities),
+      signers: mergeUnique(initial.signers, parsed.signers),
+      recipients: mergeUnique(initial.recipients, parsed.recipients),
+      departments: mergeUnique(initial.departments, parsed.departments),
+    };
+  } catch (err) {
+    console.error("Lỗi khi đọc form metadata options:", err);
+    return DEFAULT_FORM_METADATA_OPTIONS;
+  }
+}
+
+/**
+ * Lưu toàn bộ form metadata options vào localStorage
+ */
+export function saveFormMetadataOptions(options: FormMetadataOptions): void {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_METADATA_OPTIONS_KEY, JSON.stringify(options));
+  } catch (err) {
+    console.error("Lỗi khi lưu form metadata options:", err);
+  }
+}
+
+/**
+ * Thêm một giá trị mới vào nhóm chỉ định (nếu chưa có)
+ */
+export function addFormMetadataOption(field: FormMetadataField, value: string): FormMetadataOptions {
+  const current = getFormMetadataOptions();
+  const trimmed = value.trim();
+  if (!trimmed) return current;
+
+  const exists = current[field].some((item) => item.toLowerCase() === trimmed.toLowerCase());
+  if (!exists) {
+    current[field].push(trimmed);
+    saveFormMetadataOptions(current);
+  }
+  return current;
 }
 

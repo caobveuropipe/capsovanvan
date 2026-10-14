@@ -35,7 +35,14 @@ import {
   generateDocumentNumber,
   generateVerificationCode,
 } from "../utils/numberGenerator";
-import { createSampleDocumentImage } from "../services/storage";
+import {
+  createSampleDocumentImage,
+  getFormMetadataOptions,
+  addFormMetadataOption,
+  FormMetadataOptions,
+  FormMetadataField,
+} from "../services/storage";
+import { SearchableCombobox } from "./SearchableCombobox";
 
 interface IntakeModalProps {
   isOpen: boolean;
@@ -73,6 +80,20 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   const [keywords, setKeywords] = useState<string[]>([]);
   const [notes, setNotes] = useState<string>("");
   const [customDocNumberOverride, setCustomDocNumberOverride] = useState<string>("");
+
+  // Form Metadata Options (Combobox gợi ý tự do & thêm mới)
+  const [formOptions, setFormOptions] = useState<FormMetadataOptions>(() => getFormMetadataOptions());
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormOptions(getFormMetadataOptions());
+    }
+  }, [isOpen]);
+
+  const handleAddNewOption = (field: FormMetadataField, value: string) => {
+    const updated = addFormMetadataOption(field, value);
+    setFormOptions({ ...updated });
+  };
 
   // Images state
   const [images, setImages] = useState<DocumentImage[]>([]);
@@ -1053,31 +1074,29 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
                   {/* Authority & Signer */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Cơ quan / Đơn vị ban hành
-                      </label>
-                      <input
-                        type="text"
-                        value={issuingAuthority}
-                        onChange={(e) => setIssuingAuthority(e.target.value)}
-                        placeholder="Công ty CP VCCORP..."
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      />
-                    </div>
+                    <SearchableCombobox
+                      label="Cơ quan / Đơn vị ban hành"
+                      value={issuingAuthority}
+                      onChange={setIssuingAuthority}
+                      options={formOptions.issuingAuthorities}
+                      placeholder="Chọn hoặc nhập tên đơn vị..."
+                      modalTitle="Thêm Cơ quan / Đơn vị ban hành"
+                      modalPlaceholder="Ví dụ: Công ty Cổ phần VCCORP"
+                      modalDescription="Mục này sẽ được lưu lại để gợi ý cho các lần cấp số tiếp theo."
+                      onAddNewOption={(val) => handleAddNewOption("issuingAuthorities", val)}
+                    />
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Người ký & Chức vụ
-                      </label>
-                      <input
-                        type="text"
-                        value={signer}
-                        onChange={(e) => setSigner(e.target.value)}
-                        placeholder="Nguyễn Văn A - Tổng Giám đốc"
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      />
-                    </div>
+                    <SearchableCombobox
+                      label="Người ký & Chức vụ"
+                      value={signer}
+                      onChange={setSigner}
+                      options={formOptions.signers}
+                      placeholder="Chọn hoặc nhập người ký & chức vụ..."
+                      modalTitle="Thêm Người ký & Chức vụ"
+                      modalPlaceholder="Ví dụ: Nguyễn Văn An - Tổng Giám đốc"
+                      modalDescription="Mục này sẽ được lưu lại để gợi ý cho các lần cấp số tiếp theo."
+                      onAddNewOption={(val) => handleAddNewOption("signers", val)}
+                    />
                   </div>
 
                   {/* Attached file status & page count */}
@@ -1102,31 +1121,30 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
                   {/* Recipient & Department & Date */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Nơi nhận
-                      </label>
-                      <input
-                        type="text"
-                        value={recipient}
-                        onChange={(e) => setRecipient(e.target.value)}
-                        placeholder="Như điều 3; Ban Giám đốc..."
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      />
-                    </div>
+                    <SearchableCombobox
+                      label="Nơi nhận"
+                      value={recipient}
+                      onChange={setRecipient}
+                      options={formOptions.recipients}
+                      placeholder="Chọn hoặc nhập nơi nhận..."
+                      modalTitle="Thêm Nơi nhận mới"
+                      modalPlaceholder="Ví dụ: Ban Giám đốc, Các Phòng ban liên quan"
+                      modalDescription="Mục này sẽ được lưu lại để gợi ý cho các lần cấp số tiếp theo."
+                      onAddNewOption={(val) => handleAddNewOption("recipients", val)}
+                    />
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Phòng ban xử lý
-                      </label>
-                      <input
-                        type="text"
-                        value={departmentCode}
-                        onChange={(e) => setDepartmentCode(e.target.value.toUpperCase())}
-                        placeholder="VP, TCKT, HCNS, KD..."
-                        className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      />
-                    </div>
+                    <SearchableCombobox
+                      label="Phòng ban xử lý"
+                      value={departmentCode}
+                      onChange={setDepartmentCode}
+                      options={formOptions.departments}
+                      placeholder="VP, TCKT, HCNS, KD..."
+                      uppercase
+                      modalTitle="Thêm Phòng ban xử lý"
+                      modalPlaceholder="Ví dụ: VP, HCNS, TCKT, KD, IT..."
+                      modalDescription="Mục này sẽ được lưu lại để gợi ý cho các lần cấp số tiếp theo."
+                      onAddNewOption={(val) => handleAddNewOption("departments", val)}
+                    />
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
