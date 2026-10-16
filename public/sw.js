@@ -1,5 +1,5 @@
 // Service Worker for DocNum PWA (Offline & Installability Support)
-const CACHE_NAME = "docnum-pwa-v1";
+const CACHE_NAME = "docnum-pwa-v2";
 
 const PRECACHE_ASSETS = [
   "./",

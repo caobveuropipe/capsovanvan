@@ -12,14 +12,19 @@ createRoot(document.getElementById('root')!).render(
 // Register PWA Service Worker for Mobile Installability
 if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((reg) => {
-        console.log('PWA ServiceWorker active:', reg.scope);
-      })
-      .catch((err) => {
-        console.warn('PWA ServiceWorker registration notice:', err);
-      });
+    try {
+      const swUrl = new URL('sw.js', window.location.href).href;
+      navigator.serviceWorker
+        .register(swUrl)
+        .then((reg) => {
+          console.log('PWA ServiceWorker active with scope:', reg.scope);
+        })
+        .catch((err) => {
+          console.warn('PWA ServiceWorker registration notice:', err);
+        });
+    } catch (e) {
+      console.warn('Could not determine ServiceWorker URL:', e);
+    }
   });
 }
 
