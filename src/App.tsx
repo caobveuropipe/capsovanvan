@@ -1025,6 +1025,7 @@ export default function App() {
         onClose={() => setIsIntakeOpen(false)}
         categories={categories}
         userEmail={driveConfig.userEmail}
+        hasAiKey={hasAiKey}
         onOpenAiKeyModal={() => setIsAiKeyModalOpen(true)}
         onDocumentCreated={handleDocumentCreated}
         onOpenPrintModal={(doc) => {

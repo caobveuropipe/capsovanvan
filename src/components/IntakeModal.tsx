@@ -53,6 +53,7 @@ interface IntakeModalProps {
   onOpenPrintModal: (doc: DocumentRecord) => void;
   onOpenAiKeyModal?: () => void;
   userEmail?: string;
+  hasAiKey?: boolean;
 }
 
 export const IntakeModal: React.FC<IntakeModalProps> = ({
@@ -63,7 +64,18 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   onOpenPrintModal,
   onOpenAiKeyModal,
   userEmail,
+  hasAiKey: hasAiKeyProp,
 }) => {
+  const [internalHasAiKey, setInternalHasAiKey] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      getActiveGeminiKey(userEmail).then((k) => setInternalHasAiKey(!!k));
+    }
+  }, [isOpen, userEmail]);
+
+  const canUseAi = hasAiKeyProp !== undefined ? hasAiKeyProp : internalHasAiKey;
+
   const [activeSource, setActiveSource] = useState<IntakeSource>("UPLOAD");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     categories[0]?.id || ""
@@ -485,9 +497,9 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     }
   };
 
-  // Render Thanh tiến trình đổ màu hoặc Nút quét AI
+  // Render Thanh tiến trình đổ màu hoặc Nút quét AI (Chỉ hiển thị khi có Key)
   const renderOcrActionBar = () => {
-    if (images.length === 0) return null;
+    if (images.length === 0 || !canUseAi) return null;
 
     if (isOcrProcessing) {
       return (
@@ -993,7 +1005,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                     )}
 
                     {/* AI OCR Smart Extract Action Button */}
-                    {images.length > 0 && (
+                    {images.length > 0 && canUseAi && (
                       <div className="pt-1 space-y-2">
                         {renderOcrActionBar()}
 
@@ -1120,7 +1132,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                     )}
 
                     {/* AI OCR Smart Extract Action Button for Camera */}
-                    {images.length > 0 && (
+                    {images.length > 0 && canUseAi && (
                       <div className="pt-1 space-y-2">
                         {renderOcrActionBar()}
 
