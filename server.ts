@@ -105,11 +105,11 @@ wss.on("close", () => {
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// Lazy init Gemini AI
-function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
+// Lazy init Gemini AI with user dynamic key (EFR-01)
+function getGeminiClient(userKey?: string): GoogleGenAI {
+  const apiKey = (userKey || "").trim();
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured in the environment.");
+    throw new Error("Vui lòng cấu hình Gemini API Key cá nhân để sử dụng tính năng AI.");
   }
   return new GoogleGenAI({
     apiKey,
@@ -125,21 +125,74 @@ function getGeminiClient(): GoogleGenAI {
 app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
-    hasApiKey: !!process.env.GEMINI_API_KEY,
     timestamp: new Date().toISOString(),
   });
+});
+
+// API: Verify User Gemini API Key (EFR-05)
+app.post("/api/verify-gemini-key", async (req, res) => {
+  try {
+    const rawKey = (req.headers["x-gemini-api-key"] as string) || req.body?.apiKey;
+    const apiKey = (rawKey || "").trim();
+
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: "Vui lòng nhập API Key để kiểm tra." });
+    }
+
+    const ai = getGeminiClient(apiKey);
+    // Ping thử nghiệm nhẹ nhàng với model Gemini Flash mới nhất
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: "Xin chào",
+      });
+    } catch (err: any) {
+      // Fallback sang gemini-1.5-flash hoặc gemini-2.5-flash nếu cần
+      if (err?.message?.includes("not found") || err?.message?.includes("404")) {
+        response = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: "Xin chào",
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    if (response && response.text) {
+      return res.json({ success: true, message: "Kết nối Gemini API thành công!" });
+    }
+    return res.json({ success: true, message: "API Key hợp lệ." });
+  } catch (error: any) {
+    console.warn("Verify Gemini key error:", error?.message || error);
+    return res.status(400).json({
+      success: false,
+      error: error?.message || "API Key không hợp lệ hoặc không có quyền truy cập.",
+    });
+  }
 });
 
 // API: OCR and Intelligent Document Classification
 app.post("/api/ocr-classify", async (req, res) => {
   try {
+    const rawKey = (req.headers["x-gemini-api-key"] as string) || req.body?.apiKey;
+    const apiKey = (rawKey || "").trim();
+
+    // Bắt buộc dùng key cá nhân, TUYỆT ĐỐI KHÔNG fallback key hệ thống (EFR-01)
+    if (!apiKey) {
+      return res.status(401).json({
+        success: false,
+        error: "Yêu cầu cung cấp Gemini API Key cá nhân để sử dụng tính năng OCR & Trích yếu văn bản.",
+      });
+    }
+
     const { imageBase64, mimeType = "image/jpeg", textHint = "", categories = [] } = req.body;
 
     if (!imageBase64 && !textHint) {
-      return res.status(400).json({ error: "No image or text provided for analysis." });
+      return res.status(400).json({ error: "Không tìm thấy hình ảnh hoặc nội dung văn bản để phân tích." });
     }
 
-    const ai = getGeminiClient();
+    const ai = getGeminiClient(apiKey);
 
     const categoryListStr = categories.length > 0
       ? categories.map((c: any) => `${c.code}: ${c.name}`).join(", ")
@@ -188,38 +241,78 @@ Nhiệm vụ của bạn là:
       });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: { parts: contents },
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
-            categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
-            confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
-            title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
-            issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
-            recipient: { type: Type.STRING, description: "Nơi nhận" },
-            signer: { type: Type.STRING, description: "Người ký và chức danh" },
-            documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
-            departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
-            summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
-            ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
-            urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
-            secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
-            keywords: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Các từ khóa chính",
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: { parts: contents },
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
+              categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
+              confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
+              title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
+              issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
+              recipient: { type: Type.STRING, description: "Nơi nhận" },
+              signer: { type: Type.STRING, description: "Người ký và chức danh" },
+              documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
+              departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
+              summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
+              ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
+              urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
+              secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
+              keywords: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "Các từ khóa chính",
+              },
+            },
+            required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
+          },
+        },
+      });
+    } catch (modelErr: any) {
+      if (modelErr?.message?.includes("not found") || modelErr?.message?.includes("404")) {
+        response = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: { parts: contents },
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
+                categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
+                confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
+                title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
+                issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
+                recipient: { type: Type.STRING, description: "Nơi nhận" },
+                signer: { type: Type.STRING, description: "Người ký và chức danh" },
+                documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
+                departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
+                summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
+                ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
+                urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
+                secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
+                keywords: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "Các từ khóa chính",
+                },
+              },
+              required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
             },
           },
-          required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
-        },
-      },
-    });
+        });
+      } else {
+        throw modelErr;
+      }
+    }
 
     const parsedResult = JSON.parse(response.text || "{}");
     res.json({ success: true, data: parsedResult });

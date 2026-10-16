@@ -22,6 +22,8 @@ interface NavbarProps {
   onRenewDrive?: () => void;
   onLogout?: () => void;
   onLogin?: () => void;
+  onOpenAiKey?: () => void;
+  hasAiKey?: boolean;
   isDriveConnected?: boolean;
   isDriveTokenExpired?: boolean;
   isRenewingDrive?: boolean;
@@ -42,6 +44,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSyncDrive,
   onLogout,
   onLogin,
+  onOpenAiKey,
+  hasAiKey = false,
   isDriveConnected = false,
   isDriveTokenExpired = false,
   isSyncing = false,
@@ -275,6 +279,32 @@ export const Navbar: React.FC<NavbarProps> = ({
                         >
                           <Settings className="w-4 h-4 text-slate-500" />
                           <span>Cài đặt & Đổi thư mục Drive</span>
+                        </button>
+                      )}
+
+                      {onOpenAiKey && (
+                        <button
+                          type="button"
+                          id="btn-navbar-ai-key"
+                          onClick={() => {
+                            setIsProfileMenuOpen(false);
+                            onOpenAiKey();
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition-colors text-left cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Sparkles className="w-4 h-4 text-amber-500" />
+                            <span>Cài đặt Gemini AI Key</span>
+                          </div>
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              hasAiKey
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {hasAiKey ? "Đã bật AI" : "Chưa cài"}
+                          </span>
                         </button>
                       )}
                     </div>

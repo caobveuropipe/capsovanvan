@@ -43,6 +43,7 @@ import {
   FormMetadataField,
 } from "../services/storage";
 import { SearchableCombobox } from "./SearchableCombobox";
+import { getActiveGeminiKey } from "../services/aiKeyService";
 
 interface IntakeModalProps {
   isOpen: boolean;
@@ -50,6 +51,8 @@ interface IntakeModalProps {
   categories: DocumentCategory[];
   onDocumentCreated: (doc: DocumentRecord) => Promise<void> | void;
   onOpenPrintModal: (doc: DocumentRecord) => void;
+  onOpenAiKeyModal?: () => void;
+  userEmail?: string;
 }
 
 export const IntakeModal: React.FC<IntakeModalProps> = ({
@@ -58,6 +61,8 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   categories,
   onDocumentCreated,
   onOpenPrintModal,
+  onOpenAiKeyModal,
+  userEmail,
 }) => {
   const [activeSource, setActiveSource] = useState<IntakeSource>("UPLOAD");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
@@ -99,8 +104,11 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   const [images, setImages] = useState<DocumentImage[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
 
-  // AI OCR status
+  // AI OCR status & Progress Bar
   const [isOcrProcessing, setIsOcrProcessing] = useState<boolean>(false);
+  const [ocrProgress, setOcrProgress] = useState<number>(0);
+  const [ocrProgressStage, setOcrProgressStage] = useState<string>("");
+  const progressTimerRef = useRef<any>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
   const [ocrError, setOcrError] = useState<string>("");
@@ -352,14 +360,49 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     setOcrSuccessNote(`Đã áp dụng mẫu ${matchedCat.name}`);
   };
 
-  // Perform AI OCR and Intelligent Classification
+  // Perform AI OCR and Intelligent Classification với Thanh tiến trình trực quan (EFR-01, EFR-03 & EFR-04)
   const triggerOcrAnalysis = async (imageBase64?: string, mimeType?: string, textContent?: string) => {
     setIsOcrProcessing(true);
     setOcrError("");
     setOcrConfidence(null);
     setOcrSuccessNote("");
+    setOcrProgress(8);
+    setOcrProgressStage("Đang nén & chuẩn bị dữ liệu văn bản...");
+
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+    }
+
+    const startTime = Date.now();
+    progressTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 1200) {
+        setOcrProgress((prev) => Math.min(32, prev + Math.floor(Math.random() * 4 + 2)));
+        setOcrProgressStage("Đang gửi dữ liệu đến Gemini AI...");
+      } else if (elapsed < 2800) {
+        setOcrProgress((prev) => Math.min(65, prev + Math.floor(Math.random() * 3 + 2)));
+        setOcrProgressStage("Đang nhận diện ký tự OCR văn bản...");
+      } else if (elapsed < 4800) {
+        setOcrProgress((prev) => Math.min(88, prev + Math.floor(Math.random() * 2 + 1)));
+        setOcrProgressStage("AI đang đọc trích yếu & cơ quan ban hành...");
+      } else {
+        setOcrProgress((prev) => Math.min(96, prev + 1));
+        setOcrProgressStage("Đang chuẩn hóa theo Nghị định 30 & điền form...");
+      }
+    }, 160);
 
     try {
+      // 1. Lấy API Key cá nhân của người dùng (EFR-01 & EFR-03)
+      const apiKey = await getActiveGeminiKey(userEmail);
+      if (!apiKey) {
+        if (onOpenAiKeyModal) {
+          onOpenAiKeyModal();
+        }
+        throw new Error(
+          "Chưa cấu hình Gemini API Key. Vui lòng nhập API Key cá nhân trong hộp thoại cài đặt để sử dụng tính năng này."
+        );
+      }
+
       const payload: any = {
         categories: categories.map((c) => ({ code: c.code, name: c.name })),
       };
@@ -375,13 +418,16 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
       const res = await fetch("/api/ocr-classify", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey,
+        },
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-      if (!json.success || !json.data) {
-        throw new Error(json.error || "Không thể nhận diện nội dung OCR.");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.error || `Lỗi máy chủ OCR (${res.status}). Vui lòng kiểm tra lại API Key.`);
       }
 
       const d = json.data;
@@ -410,15 +456,87 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       if (d.secrecy) setSecrecy(d.secrecy as SecrecyLevel);
       if (d.keywords && Array.isArray(d.keywords)) setKeywords(d.keywords);
       if (d.confidence !== undefined) setOcrConfidence(Math.round(d.confidence * 100));
-      setOcrSuccessNote("Đã trích xuất và nhận diện OCR toàn văn thành công!");
+      setOcrSuccessNote("✨ Đã trích xuất và nhận diện OCR toàn văn thành công!");
+
+      // Hoàn tất 100%
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      setOcrProgress(100);
+      setOcrProgressStage("Hoàn tất 100%! Đã tự động điền form");
+
+      // Chờ 500ms để người dùng quan sát thanh tiến trình đạt 100% mỹ mãn
+      await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (err: any) {
-      console.warn("OCR API error, using smart fallback parser:", err);
-      setOcrError("AI OCR trực tuyến gặp sự cố, hệ thống chuyển sang chế độ tự động điền mẫu thông minh.");
-      if (!title) setTitle("Công văn / Văn bản tiếp nhận xử lý theo thẩm quyền");
-      setOcrConfidence(85);
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      console.warn("OCR API error:", err);
+      setOcrError(err.message || "Quét OCR gặp sự cố. Bạn có thể tiếp tục nhập liệu thủ công.");
+      setOcrConfidence(null);
     } finally {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
       setIsOcrProcessing(false);
     }
+  };
+
+  // Render Thanh tiến trình đổ màu hoặc Nút quét AI
+  const renderOcrActionBar = () => {
+    if (images.length === 0) return null;
+
+    if (isOcrProcessing) {
+      return (
+        <div className="w-full space-y-2 p-3 rounded-xl bg-slate-900 border border-slate-700/80 shadow-md text-white animate-in fade-in duration-200">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 truncate pr-2">
+              {ocrProgress === 100 ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+              )}
+              <span className="truncate font-medium text-slate-200">{ocrProgressStage}</span>
+            </div>
+            <span className="font-mono font-bold text-amber-300 shrink-0 text-xs">
+              {ocrProgress}%
+            </span>
+          </div>
+
+          {/* Thanh đổ màu Progress Bar */}
+          <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden ${
+                ocrProgress === 100
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-md shadow-emerald-500/50"
+                  : "bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"
+              }`}
+              style={{ width: `${ocrProgress}%` }}
+            >
+              <div className="absolute inset-0 bg-white/20 w-full -translate-x-full animate-shimmer" />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        id="btn-trigger-ai-ocr"
+        onClick={() => {
+          const targetImg = images[selectedImageIndex] || images[0];
+          triggerOcrAnalysis(targetImg.dataUrl, targetImg.mimeType);
+        }}
+        className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
+      >
+        <Sparkles className="w-4 h-4 text-amber-300" />
+        <span>✨ Quét AI & Tự động trích yếu</span>
+      </button>
+    );
   };
   const handleIssueNumberAndSave = async () => {
     if (isSubmitting) return;
@@ -873,6 +991,35 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                         </div>
                       </div>
                     )}
+
+                    {/* AI OCR Smart Extract Action Button */}
+                    {images.length > 0 && (
+                      <div className="pt-1 space-y-2">
+                        {renderOcrActionBar()}
+
+                        {/* OCR Status Messages */}
+                        {ocrError && (
+                          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                            <span className="leading-tight">{ocrError}</span>
+                          </div>
+                        )}
+
+                        {ocrSuccessNote && (
+                          <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>{ocrSuccessNote}</span>
+                            </span>
+                            {ocrConfidence !== null && (
+                              <span className="font-bold text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+                                Tin cậy: {ocrConfidence}%
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -969,6 +1116,35 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                         <p className="text-[11px] text-slate-500 italic text-center pt-1">
                           Bạn có thể tiếp tục hướng camera và bấm &quot;Chụp tiếp trang sau&quot; để nạp đủ các trang của văn bản trước khi sang bước Cấp số.
                         </p>
+                      </div>
+                    )}
+
+                    {/* AI OCR Smart Extract Action Button for Camera */}
+                    {images.length > 0 && (
+                      <div className="pt-1 space-y-2">
+                        {renderOcrActionBar()}
+
+                        {/* OCR Status Messages */}
+                        {ocrError && (
+                          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                            <span className="leading-tight">{ocrError}</span>
+                          </div>
+                        )}
+
+                        {ocrSuccessNote && (
+                          <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>{ocrSuccessNote}</span>
+                            </span>
+                            {ocrConfidence !== null && (
+                              <span className="font-bold text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+                                Tin cậy: {ocrConfidence}%
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

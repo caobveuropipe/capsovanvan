@@ -58,6 +58,8 @@ import {
   setupVisibilityAndFocusSync,
   resetRealtimeCircuitBreaker,
 } from "./services/realtimeService";
+import { clearInMemoryAiKey, syncGeminiKeyOnLogin, getActiveGeminiKey } from "./services/aiKeyService";
+import { AiKeyModal } from "./components/AiKeyModal";
 import { compileImagesToPdf } from "./utils/pdfGenerator";
 
 export default function App() {
@@ -69,6 +71,8 @@ export default function App() {
   const [isIntakeOpen, setIsIntakeOpen] = useState<boolean>(false);
   const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
   const [isGoogleDriveOpen, setIsGoogleDriveOpen] = useState<boolean>(false);
+  const [isAiKeyModalOpen, setIsAiKeyModalOpen] = useState<boolean>(false);
+  const [hasAiKey, setHasAiKey] = useState<boolean>(false);
   const [driveConfig, setDriveConfig] = useState<GoogleDriveConfig>(getGoogleDriveConfig());
   const [selectedDocForDetail, setSelectedDocForDetail] = useState<DocumentRecord | null>(null);
   const [selectedDocForPrint, setSelectedDocForPrint] = useState<DocumentRecord | null>(null);
@@ -314,6 +318,10 @@ export default function App() {
       setIsOfflineMode(false);
       localStorage.removeItem("docnum_offline_mode");
       showToast(`Đăng nhập Google Workspace (${updated.userEmail}) thành công!`, "success");
+      // Đồng bộ ngầm Gemini AI Key từ Google Drive appDataFolder (EFR-02 & EFR-03)
+      if (updated.accessToken && updated.userEmail) {
+        syncGeminiKeyOnLogin(updated.accessToken, updated.userEmail).catch(() => {});
+      }
       // Tự động kéo dữ liệu về ngay sau khi đăng nhập
       setTimeout(() => {
         syncWithGoogleDrive(false);
@@ -329,6 +337,8 @@ export default function App() {
 
   // Đăng xuất tài khoản Google
   const handleLogoutGoogle = () => {
+    // Dọn dẹp active AI key trong RAM để tránh rò rỉ khi switch account (EFR-03)
+    clearInMemoryAiKey();
     const updated = logoutGoogle(false);
     setDriveConfig(updated);
     setIsOfflineMode(false);
@@ -350,6 +360,9 @@ export default function App() {
       const updated = await renewGoogleDriveSession();
       setDriveConfig(updated);
       showToast(`Đã gia hạn phiên Google Drive (${updated.userEmail}) thành công!`, "success");
+      if (updated.accessToken && updated.userEmail) {
+        syncGeminiKeyOnLogin(updated.accessToken, updated.userEmail).catch(() => {});
+      }
       setTimeout(() => {
         syncWithGoogleDrive(false);
       }, 500);
@@ -437,6 +450,9 @@ export default function App() {
         }
 
         if (currentConfig.accessToken && !isDriveTokenExpired(currentConfig)) {
+          if (currentConfig.userEmail) {
+            syncGeminiKeyOnLogin(currentConfig.accessToken, currentConfig.userEmail).catch(() => {});
+          }
           await syncWithGoogleDrive(false);
         }
       } catch (e) {
@@ -476,6 +492,17 @@ export default function App() {
       cleanupFocus();
     };
   }, []);
+
+  // Kiểm tra trạng thái AI Key khi tài khoản thay đổi
+  useEffect(() => {
+    if (driveConfig.userEmail) {
+      getActiveGeminiKey(driveConfig.userEmail).then((key) => {
+        setHasAiKey(!!key);
+      });
+    } else {
+      setHasAiKey(false);
+    }
+  }, [driveConfig.userEmail]);
 
   // Category changes handler
   const handleSaveCategories = async (updated: DocumentCategory[]) => {
@@ -841,6 +868,8 @@ export default function App() {
         onRenewDrive={handleRenewDriveSession}
         onLogout={handleLogoutGoogle}
         onLogin={handleLoginGoogle}
+        onOpenAiKey={() => setIsAiKeyModalOpen(true)}
+        hasAiKey={hasAiKey}
         isDriveConnected={!!driveConfig.userEmail}
         isDriveTokenExpired={isTokenExpired}
         isRenewingDrive={isDriveRenewing}
@@ -974,6 +1003,14 @@ export default function App() {
         }}
       />
 
+      {/* 0.1. Personal Gemini AI API Key Config Modal */}
+      <AiKeyModal
+        isOpen={isAiKeyModalOpen}
+        onClose={() => setIsAiKeyModalOpen(false)}
+        userEmail={driveConfig.userEmail}
+        onKeyChanged={(has) => setHasAiKey(has)}
+      />
+
       {/* 1. Category Prefix/Suffix & Numbering Master Config Modal */}
       <CategoryConfigModal
         isOpen={isConfigOpen}
@@ -987,6 +1024,8 @@ export default function App() {
         isOpen={isIntakeOpen}
         onClose={() => setIsIntakeOpen(false)}
         categories={categories}
+        userEmail={driveConfig.userEmail}
+        onOpenAiKeyModal={() => setIsAiKeyModalOpen(true)}
         onDocumentCreated={handleDocumentCreated}
         onOpenPrintModal={(doc) => {
           setIsIntakeOpen(false);

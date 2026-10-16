@@ -155,7 +155,7 @@ export async function requestGoogleAccessToken(
       const tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope:
-          "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+          "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
         callback: (tokenResponse: any) => {
           if (tokenResponse.error) {
             const errDetail = tokenResponse.error_description || tokenResponse.error;
@@ -164,6 +164,7 @@ export async function requestGoogleAccessToken(
           const accessToken = tokenResponse.access_token;
           const expiresIn = parseInt(tokenResponse.expires_in || "3600", 10);
           const expiresAt = Date.now() + expiresIn * 1000;
+          appDataScopeForbidden = false; // Reset cờ vì đây là token mới
           resolve({ accessToken, expiresIn, expiresAt });
         },
         error_callback: (nonOAuthErr: any) => {
@@ -1245,6 +1246,149 @@ export async function saveDatabaseToGoogleDrive(
     }
     return payload;
   });
+}
+
+// Ghi nhớ phiên Google OAuth hiện tại chưa có scope drive.appdata để không gửi lại request 403
+let appDataScopeForbidden = false;
+
+export function resetAppDataScopeForbidden(): void {
+  appDataScopeForbidden = false;
+}
+
+/**
+ * Đọc file dữ liệu từ phân vùng riêng tư appDataFolder của tài khoản Google
+ */
+export async function readAppDataFile<T = any>(
+  accessToken: string,
+  filename: string
+): Promise<{ fileId: string; data: T } | null> {
+  if (appDataScopeForbidden || !accessToken) {
+    return null;
+  }
+
+  try {
+    const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${encodeURIComponent(
+      filename
+    )}' and trashed=false&fields=files(id,name,modifiedTime)`;
+
+    const listRes = await fetch(listUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!listRes.ok) {
+      if (listRes.status === 403) {
+        // Đánh dấu phiên hiện tại chưa có scope drive.appdata -> chặn toàn bộ request appDataFolder sau đó
+        appDataScopeForbidden = true;
+        console.debug(`[Drive appDataFolder] Token chưa có quyền drive.appdata, tạm dừng đồng bộ Drive cho đến lần đăng nhập sau.`);
+      } else if (listRes.status === 401) {
+        console.debug(`[Drive appDataFolder] Token Google đã hết hạn (401), dùng local cache.`);
+      } else {
+        console.warn(`[Drive appDataFolder] Lỗi tìm kiếm tệp ${filename}:`, listRes.status);
+      }
+      return null;
+    }
+
+    const listData = await listRes.json();
+    if (!listData.files || listData.files.length === 0) {
+      return null;
+    }
+
+    const fileId = listData.files[0].id;
+    const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!contentRes.ok) {
+      if (contentRes.status === 401 || contentRes.status === 403) {
+        console.debug(`[Drive appDataFolder] Bỏ qua tải nội dung tệp (${contentRes.status}).`);
+      } else {
+        console.warn(`[Drive appDataFolder] Lỗi tải nội dung tệp ${fileId}:`, contentRes.status);
+      }
+      return null;
+    }
+
+    const data = await contentRes.json();
+    return { fileId, data: data as T };
+  } catch (err) {
+    console.debug(`[Drive appDataFolder] Không thể đọc tệp ${filename}, dùng local cache.`, err);
+    return null;
+  }
+}
+
+/**
+ * Lưu hoặc cập nhật file dữ liệu vào phân vùng riêng tư appDataFolder
+ */
+export async function saveAppDataFile<T = any>(
+  accessToken: string,
+  filename: string,
+  data: T
+): Promise<string | null> {
+  if (appDataScopeForbidden || !accessToken) {
+    return null;
+  }
+  try {
+    // 1. Kiểm tra file đã tồn tại trong appDataFolder chưa
+    const existing = await readAppDataFile(accessToken, filename);
+    const contentStr = JSON.stringify(data, null, 2);
+
+    if (existing?.fileId) {
+      // Cập nhật file đã có
+      const patchRes = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${existing.fileId}?uploadType=media`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
+          body: contentStr,
+        }
+      );
+
+      if (!patchRes.ok) {
+        throw new Error(`PATCH appDataFolder failed: ${patchRes.status}`);
+      }
+      return existing.fileId;
+    } else {
+      // Tạo mới file trong appDataFolder bằng multipart upload
+      const metadata = {
+        name: filename,
+        parents: ["appDataFolder"],
+      };
+
+      const boundary = "-------314159265358979323846";
+      const delimiter = "\r\n--" + boundary + "\r\n";
+      const closeDelim = "\r\n--" + boundary + "--";
+
+      const multipartRequestBody =
+        delimiter +
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+        JSON.stringify(metadata) +
+        delimiter +
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+        contentStr +
+        closeDelim;
+
+      const createRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": `multipart/related; boundary=${boundary}`,
+        },
+        body: multipartRequestBody,
+      });
+
+      if (!createRes.ok) {
+        throw new Error(`CREATE appDataFolder file failed: ${createRes.status}`);
+      }
+
+      const result = await createRes.json();
+      return result.id;
+    }
+  } catch (err) {
+    console.error(`[Drive appDataFolder] Lỗi ghi tệp ${filename}:`, err);
+    return null;
+  }
 }
 
 

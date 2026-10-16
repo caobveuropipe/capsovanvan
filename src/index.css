@@ -18,3 +18,17 @@
 .category-filter-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
+
+/* Shimmer animation cho thanh tiến trình OCR */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.8s infinite linear;
+}

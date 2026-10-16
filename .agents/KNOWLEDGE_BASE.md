@@ -19,4 +19,4 @@ Lưu trữ những **quyết định kiến trúc** quan trọng và **lý do ch
 
 ## Ongoing Decisions
 
-<!-- Các quyết định tiếp theo sẽ được ghi vào đây khi hệ thống mở rộng (VD: chuyển sang PostgreSQL/SQLite, bổ sung Multi-tenancy, xác thực OAuth2) -->
+- 2026-10-16 Cô lập hạn ngạch AI bằng Dynamic User Gemini API Key & Đồng bộ hai chiều qua Google Drive appDataFolder với cơ chế Tombstone. Why: Triệt tiêu chi phí hạn ngạch tập trung của máy chủ; bảo vệ tính riêng tư của API Key người dùng (không lưu key trên server hay DB chung, chỉ lưu ở phân vùng appDataFolder của chính tài khoản Google của họ); cơ chế so sánh updatedAt và Tombstone khi xóa bảo đảm trạng thái key đồng bộ nhất quán đa thiết bị mà không ảnh hưởng tới người dùng không dùng AI (Non-blocking).

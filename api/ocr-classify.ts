@@ -6,15 +6,21 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    const rawKey = (req.headers["x-gemini-api-key"] as string) || req.body?.apiKey;
+    const apiKey = (rawKey || "").trim();
+
+    // Bắt buộc dùng key cá nhân, TUYỆT ĐỐI KHÔNG fallback key hệ thống (EFR-01)
+    if (!apiKey) {
+      return res.status(401).json({
+        success: false,
+        error: "Yêu cầu cung cấp Gemini API Key cá nhân để sử dụng tính năng OCR & Trích yếu văn bản.",
+      });
+    }
+
     const { imageBase64, mimeType = "image/jpeg", textHint = "", categories = [] } = req.body;
 
     if (!imageBase64 && !textHint) {
       return res.status(400).json({ error: "No image or text provided for analysis." });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on Vercel environment." });
     }
 
     const ai = new GoogleGenAI({
@@ -72,37 +78,76 @@ Nhiệm vụ của bạn là:
       });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: { parts: contents },
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            categoryCode: { type: Type.STRING },
-            categoryName: { type: Type.STRING },
-            confidence: { type: Type.NUMBER },
-            title: { type: Type.STRING },
-            issuingAuthority: { type: Type.STRING },
-            recipient: { type: Type.STRING },
-            signer: { type: Type.STRING },
-            documentDate: { type: Type.STRING },
-            departmentCode: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            ocrFullText: { type: Type.STRING },
-            urgency: { type: Type.STRING },
-            secrecy: { type: Type.STRING },
-            keywords: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: { parts: contents },
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              categoryCode: { type: Type.STRING },
+              categoryName: { type: Type.STRING },
+              confidence: { type: Type.NUMBER },
+              title: { type: Type.STRING },
+              issuingAuthority: { type: Type.STRING },
+              recipient: { type: Type.STRING },
+              signer: { type: Type.STRING },
+              documentDate: { type: Type.STRING },
+              departmentCode: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              ocrFullText: { type: Type.STRING },
+              urgency: { type: Type.STRING },
+              secrecy: { type: Type.STRING },
+              keywords: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+            required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
+          },
+        },
+      });
+    } catch (modelErr: any) {
+      if (modelErr?.message?.includes("not found") || modelErr?.message?.includes("404")) {
+        response = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: { parts: contents },
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                categoryCode: { type: Type.STRING },
+                categoryName: { type: Type.STRING },
+                confidence: { type: Type.NUMBER },
+                title: { type: Type.STRING },
+                issuingAuthority: { type: Type.STRING },
+                recipient: { type: Type.STRING },
+                signer: { type: Type.STRING },
+                documentDate: { type: Type.STRING },
+                departmentCode: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                ocrFullText: { type: Type.STRING },
+                urgency: { type: Type.STRING },
+                secrecy: { type: Type.STRING },
+                keywords: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+              },
+              required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
             },
           },
-          required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
-        },
-      },
-    });
+        });
+      } else {
+        throw modelErr;
+      }
+    }
 
     const parsedResult = JSON.parse(response.text || "{}");
     return res.json({ success: true, data: parsedResult });
