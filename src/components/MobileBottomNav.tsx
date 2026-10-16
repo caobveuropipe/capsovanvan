@@ -14,7 +14,9 @@ interface MobileBottomNavProps {
   activeModal?: "intake" | "config" | "drive" | "detail" | "print" | null;
   onTabChange: (tab: "archive" | "stats") => void;
   onOpenIntake: () => void;
-  onOpenConfig: () => void;
+  onOpenConfig?: () => void;
+  onOpenSettingsMenu: () => void;
+  isSettingsOpen?: boolean;
   onOpenGoogleDrive?: () => void;
   onSyncDrive?: () => void;
   onRenewDrive?: () => void;
@@ -30,6 +32,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onTabChange,
   onOpenIntake,
   onOpenConfig,
+  onOpenSettingsMenu,
+  isSettingsOpen = false,
   onOpenGoogleDrive,
   onSyncDrive,
   onRenewDrive,
@@ -154,19 +158,24 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         </span>
       </button>
 
-      {/* 5. Cấu hình Button */}
+      {/* 5. Cài đặt & Tài khoản Menu Button */}
       <button
         type="button"
-        id="mobile-nav-config"
-        onClick={onOpenConfig}
+        id="mobile-nav-settings"
+        onClick={onOpenSettingsMenu}
         className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all flex-1 min-h-[48px] cursor-pointer ${
-          isConfigActive
+          isSettingsOpen || isConfigActive
             ? "text-blue-400 font-bold bg-blue-500/10"
             : "text-slate-400 hover:text-slate-200"
         }`}
       >
-        <Settings className="w-5 h-5" />
-        <span className="text-[10px] mt-0.5">Cấu hình</span>
+        <div className="relative">
+          <Settings className="w-5 h-5" />
+          {isDriveConnected && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-slate-900" />
+          )}
+        </div>
+        <span className="text-[10px] mt-0.5">Cài đặt</span>
       </button>
     </nav>
   );

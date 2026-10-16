@@ -13,6 +13,7 @@ import { PrintDocumentModal } from "./components/PrintDocumentModal";
 import { GoogleDriveConfigModal } from "./components/GoogleDriveConfigModal";
 import { DashboardStats } from "./components/DashboardStats";
 import { MobileBottomNav } from "./components/MobileBottomNav";
+import { MobileSettingsSheet } from "./components/MobileSettingsSheet";
 import { LoginScreen } from "./components/LoginScreen";
 import { HardDrive, AlertCircle, ArrowRight, FolderPlus, FileText } from "lucide-react";
 import { DocumentCategory, DocumentRecord } from "./types";
@@ -72,6 +73,7 @@ export default function App() {
   const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
   const [isGoogleDriveOpen, setIsGoogleDriveOpen] = useState<boolean>(false);
   const [isAiKeyModalOpen, setIsAiKeyModalOpen] = useState<boolean>(false);
+  const [isMobileSettingsOpen, setIsMobileSettingsOpen] = useState<boolean>(false);
   const [hasAiKey, setHasAiKey] = useState<boolean>(false);
   const [driveConfig, setDriveConfig] = useState<GoogleDriveConfig>(getGoogleDriveConfig());
   const [selectedDocForDetail, setSelectedDocForDetail] = useState<DocumentRecord | null>(null);
@@ -794,6 +796,8 @@ export default function App() {
     setIsIntakeOpen(false);
     setIsConfigOpen(false);
     setIsGoogleDriveOpen(false);
+    setIsMobileSettingsOpen(false);
+    setIsAiKeyModalOpen(false);
     setSelectedDocForDetail(null);
     setSelectedDocForPrint(null);
   };
@@ -804,27 +808,23 @@ export default function App() {
   };
 
   const handleMobileOpenIntake = () => {
-    setIsConfigOpen(false);
-    setIsGoogleDriveOpen(false);
-    setSelectedDocForDetail(null);
-    setSelectedDocForPrint(null);
+    closeAllModals();
     setIsIntakeOpen(true);
   };
 
   const handleMobileOpenConfig = () => {
-    setIsIntakeOpen(false);
-    setIsGoogleDriveOpen(false);
-    setSelectedDocForDetail(null);
-    setSelectedDocForPrint(null);
+    closeAllModals();
     setIsConfigOpen(true);
   };
 
   const handleMobileOpenGoogleDrive = () => {
-    setIsIntakeOpen(false);
-    setIsConfigOpen(false);
-    setSelectedDocForDetail(null);
-    setSelectedDocForPrint(null);
+    closeAllModals();
     setIsGoogleDriveOpen(true);
+  };
+
+  const handleMobileOpenSettings = () => {
+    closeAllModals();
+    setIsMobileSettingsOpen(true);
   };
 
   // 1. Loading splash screen khi đang khởi tạo dữ liệu
@@ -980,12 +980,36 @@ export default function App() {
         onTabChange={handleMobileTabChange}
         onOpenIntake={handleMobileOpenIntake}
         onOpenConfig={handleMobileOpenConfig}
+        onOpenSettingsMenu={handleMobileOpenSettings}
+        isSettingsOpen={isMobileSettingsOpen}
         onOpenGoogleDrive={handleMobileOpenGoogleDrive}
         onSyncDrive={() => syncWithGoogleDrive(true)}
         onRenewDrive={handleRenewDriveSession}
         isDriveConnected={!!driveConfig.userEmail}
         isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
         isSyncing={isDriveSyncing}
+        totalDocsCount={documents.length}
+      />
+
+      {/* Mobile Settings & Account Sheet */}
+      <MobileSettingsSheet
+        isOpen={isMobileSettingsOpen}
+        onClose={() => setIsMobileSettingsOpen(false)}
+        userName={driveConfig.userName}
+        userEmail={driveConfig.userEmail}
+        isDriveConnected={!!driveConfig.userEmail}
+        isDriveTokenExpired={isDriveTokenExpired(driveConfig)}
+        onLogin={handleLoginGoogle}
+        onLogout={handleLogoutGoogle}
+        folderName={driveConfig.folderName}
+        onOpenGoogleDrive={() => setIsGoogleDriveOpen(true)}
+        onSyncDrive={() => syncWithGoogleDrive(true)}
+        isSyncing={isDriveSyncing}
+        hasAiKey={hasAiKey}
+        onOpenAiKey={() => setIsAiKeyModalOpen(true)}
+        onOpenConfig={() => setIsConfigOpen(true)}
+        currentTab={currentTab}
+        onTabChange={setCurrentTab}
         totalDocsCount={documents.length}
       />
 

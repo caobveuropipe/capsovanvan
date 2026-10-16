@@ -93,8 +93,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </div>
 
-          {/* 2 - LỀ PHẢI THEO THỨ TỰ TỪ TRÁI QUA PHẢI: */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* 2 - LỀ PHẢI: Chỉ hiển thị trên Desktop (md:flex). Trên mobile đã có MobileBottomNav */}
+          <div className="hidden md:flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* 2.1 - Nút cấp số (icon dấu + trong vòng tròn và chữ Cấp số, bỏ bớt dấu + bằng chữ) */}
             <button
               id="btn-open-intake-modal"
@@ -360,6 +360,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="hidden xs:inline">Đăng nhập</span>
                 </button>
               )
+            )}
+          </div>
+
+          {/* 3 - KHOẢNG ĐỆM AN TOÀN TRÊN MOBILE: Chừa khoảng trống bên phải (pr-14) để nút thu về trang chính của hub.playai.vn không đè vào nội dung */}
+          <div className="md:hidden flex items-center pr-14 shrink-0">
+            {isDriveConnected ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Online
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                Offline
+              </span>
             )}
           </div>
         </div>
