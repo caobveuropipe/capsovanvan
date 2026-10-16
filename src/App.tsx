@@ -833,6 +833,40 @@ export default function App() {
     }
   };
 
+  // Document Updated handler (Update Metadata & Sync Google Drive & Realtime)
+  const handleUpdateDocument = async (
+    updatedDoc: DocumentRecord
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      await saveDocument(updatedDoc);
+      const updatedDocs = await getAllDocuments();
+      setDocuments(updatedDocs);
+      setSelectedDocForDetail(updatedDoc);
+
+      const currentDriveConfig = getGoogleDriveConfig();
+      if (currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
+        try {
+          await pushLocalDbToDrive(categories, updatedDocs);
+        } catch (driveErr) {
+          console.warn("Lỗi đồng bộ dữ liệu cập nhật lên Google Drive:", driveErr);
+        }
+      }
+
+      broadcastDocumentChange({
+        changeType: "update",
+        docNumber: updatedDoc.docNumber,
+        folderId: currentDriveConfig.folderId,
+      });
+
+      showToast(`Đã cập nhật thông tin văn bản [${updatedDoc.docNumber}] thành công!`, "success");
+      return { success: true };
+    } catch (e: any) {
+      console.error("Lỗi khi cập nhật văn bản:", e);
+      showToast(`Không thể cập nhật văn bản: ${e.message || "Lỗi không xác định"}`, "error");
+      return { success: false, message: e.message };
+    }
+  };
+
   // Active modal detection for bottom nav highlight on mobile
   const activeModal: "intake" | "config" | "drive" | "detail" | "print" | null =
     isIntakeOpen
@@ -1123,6 +1157,8 @@ export default function App() {
           setSelectedDocForPrint(doc);
         }}
         onDelete={handleDeleteDocument}
+        onUpdate={handleUpdateDocument}
+        currentUser={driveConfig.userEmail}
       />
 
       {/* 4. Official Printable Document Modal (Slip / Stamped Scanned Document) */}

@@ -28,12 +28,22 @@ import {
   AlertCircle,
   Trash2,
   Loader2,
+  Edit3,
+  Save,
+  Lock,
 } from "lucide-react";
-import { DocumentRecord } from "../types";
+import { DocumentRecord, UrgencyLevel, SecrecyLevel, HistoryItem } from "../types";
 import {
   formatVietnameseDate,
   formatVietnameseDateTime,
 } from "../utils/numberGenerator";
+import { SearchableCombobox } from "./SearchableCombobox";
+import {
+  getFormMetadataOptions,
+  addFormMetadataOption,
+  FormMetadataOptions,
+  FormMetadataField,
+} from "../services/storage";
 
 interface DocumentDetailModalProps {
   document: DocumentRecord | null;
@@ -41,6 +51,8 @@ interface DocumentDetailModalProps {
   onClose: () => void;
   onPrint: (doc: DocumentRecord) => void;
   onDelete: (id: string) => Promise<{ success: boolean; driveSynced: boolean; message?: string }> | void;
+  onUpdate?: (updatedDoc: DocumentRecord) => Promise<{ success: boolean; message?: string }> | void;
+  currentUser?: string;
 }
 
 export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
@@ -49,8 +61,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   onClose,
   onPrint,
   onDelete,
+  onUpdate,
+  currentUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<"info" | "ocr" | "email" | "history">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "email" | "history">("info");
   const [mobileView, setMobileView] = useState<"image" | "details">("image");
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [rotation, setRotation] = useState<number>(0);
@@ -60,6 +74,40 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   const [isOcrCopied, setIsOcrCopied] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Edit Mode states
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+  const [formOptions, setFormOptions] = useState<FormMetadataOptions>(() => getFormMetadataOptions());
+
+  const [editTitle, setEditTitle] = useState<string>("");
+  const [editSigner, setEditSigner] = useState<string>("");
+  const [editAuthority, setEditAuthority] = useState<string>("");
+  const [editRecipient, setEditRecipient] = useState<string>("");
+  const [editDepartment, setEditDepartment] = useState<string>("");
+  const [editDocDate, setEditDocDate] = useState<string>("");
+  const [editNotes, setEditNotes] = useState<string>("");
+  const [editSummary, setEditSummary] = useState<string>("");
+  const [editUrgency, setEditUrgency] = useState<UrgencyLevel>("THUONG");
+  const [editSecrecy, setEditSecrecy] = useState<SecrecyLevel>("THUONG");
+
+  // Sync edit form with document
+  useEffect(() => {
+    if (doc) {
+      setEditTitle(doc.title || "");
+      setEditSigner(doc.signer || "");
+      setEditAuthority(doc.issuingAuthority || "");
+      setEditRecipient(doc.recipient || "");
+      setEditDepartment(doc.departmentCode || "");
+      setEditDocDate(doc.documentDate || "");
+      setEditNotes(doc.notes || "");
+      setEditSummary(doc.summary || "");
+      setEditUrgency(doc.urgency || "THUONG");
+      setEditSecrecy(doc.secrecy || "THUONG");
+      setIsEditing(false);
+      setFormOptions(getFormMetadataOptions());
+    }
+  }, [doc, isOpen]);
 
   const currentImage = doc?.images && doc.images[activeImageIndex] ? doc.images[activeImageIndex] : null;
 
@@ -150,6 +198,121 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     window.document.body.removeChild(link);
   };
 
+  const handleAddNewOption = (field: FormMetadataField, value: string) => {
+    const updated = addFormMetadataOption(field, value);
+    setFormOptions({ ...updated });
+  };
+
+  const handleStartEdit = () => {
+    if (!doc) return;
+    setEditTitle(doc.title || "");
+    setEditSigner(doc.signer || "");
+    setEditAuthority(doc.issuingAuthority || "");
+    setEditRecipient(doc.recipient || "");
+    setEditDepartment(doc.departmentCode || "");
+    setEditDocDate(doc.documentDate || "");
+    setEditNotes(doc.notes || "");
+    setEditSummary(doc.summary || "");
+    setEditUrgency(doc.urgency || "THUONG");
+    setEditSecrecy(doc.secrecy || "THUONG");
+    setFormOptions(getFormMetadataOptions());
+    setActiveTab("info");
+    setMobileView("details");
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    if (!doc) return;
+    setEditTitle(doc.title || "");
+    setEditSigner(doc.signer || "");
+    setEditAuthority(doc.issuingAuthority || "");
+    setEditRecipient(doc.recipient || "");
+    setEditDepartment(doc.departmentCode || "");
+    setEditDocDate(doc.documentDate || "");
+    setEditNotes(doc.notes || "");
+    setEditSummary(doc.summary || "");
+    setEditUrgency(doc.urgency || "THUONG");
+    setEditSecrecy(doc.secrecy || "THUONG");
+    setIsEditing(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!doc || !onUpdate) return;
+    if (!editTitle.trim()) {
+      alert("Trích yếu nội dung văn bản không được để trống!");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const changes: string[] = [];
+      if (editTitle.trim() !== (doc.title || "").trim()) {
+        changes.push(`Trích yếu`);
+      }
+      if (editSigner.trim() !== (doc.signer || "").trim()) {
+        changes.push(`Người ký`);
+      }
+      if (editAuthority.trim() !== (doc.issuingAuthority || "").trim()) {
+        changes.push(`Cơ quan ban hành`);
+      }
+      if (editRecipient.trim() !== (doc.recipient || "").trim()) {
+        changes.push(`Nơi nhận`);
+      }
+      if (editDepartment.trim() !== (doc.departmentCode || "").trim()) {
+        changes.push(`Phòng ban`);
+      }
+      if (editDocDate !== doc.documentDate) {
+        changes.push(`Ngày văn bản`);
+      }
+      if (editNotes.trim() !== (doc.notes || "").trim()) {
+        changes.push(`Ghi chú`);
+      }
+      if (editSummary.trim() !== (doc.summary || "").trim()) {
+        changes.push(`Tóm tắt`);
+      }
+      if (editUrgency !== doc.urgency) {
+        changes.push(`Độ khẩn`);
+      }
+      if (editSecrecy !== doc.secrecy) {
+        changes.push(`Độ mật`);
+      }
+
+      const now = new Date().toISOString();
+      const newHistoryItem: HistoryItem = {
+        id: `hist-${Date.now()}`,
+        timestamp: now,
+        action: "CẬP NHẬT THÔNG TIN",
+        user: currentUser || "Văn thư",
+        details: changes.length > 0 ? `Đã chỉnh sửa: ${changes.join(", ")}` : "Cập nhật thông tin văn bản",
+      };
+
+      const updatedDoc: DocumentRecord = {
+        ...doc,
+        title: editTitle.trim(),
+        signer: editSigner.trim(),
+        issuingAuthority: editAuthority.trim(),
+        recipient: editRecipient.trim(),
+        departmentCode: editDepartment.trim(),
+        documentDate: editDocDate,
+        notes: editNotes.trim(),
+        summary: editSummary.trim(),
+        urgency: editUrgency,
+        secrecy: editSecrecy,
+        history: [newHistoryItem, ...(doc.history || [])],
+        updatedAt: now,
+      };
+
+      const res = await onUpdate(updatedDoc);
+      if (!res || res.success !== false) {
+        setIsEditing(false);
+      }
+    } catch (err) {
+      console.error("Lỗi khi lưu chỉnh sửa:", err);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   return (
     <div
       id="document-detail-modal-overlay"
@@ -194,6 +357,28 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                 <ExternalLink className="w-3 h-3" />
               </a>
             )}
+
+            {/* Nút Chỉnh sửa (chỉ hiện khi xem, khi sửa chỉ hiển thị badge trạng thái) */}
+            {onUpdate && (
+              isEditing ? (
+                <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/20 border border-amber-500/30 rounded-lg text-amber-300 text-xs font-semibold">
+                  <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden xs:inline">Đang chỉnh sửa</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartEdit}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold shadow-xs cursor-pointer min-h-[36px] transition-colors"
+                  title="Chỉnh sửa trích yếu, người ký, ghi chú, đơn vị..."
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden xs:inline">Sửa thông tin</span>
+                  <span className="xs:hidden">Sửa</span>
+                </button>
+              )
+            )}
+
             <button
               onClick={() => onPrint(doc)}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer min-h-[36px]"
@@ -571,19 +756,6 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                 >
                   Thông tin văn bản
                 </button>
-                {doc.ocrFullText && (
-                  <button
-                    onClick={() => setActiveTab("ocr")}
-                    className={`pb-2 px-3 border-b-2 transition-all cursor-pointer flex items-center gap-1 ${
-                      activeTab === "ocr"
-                        ? "border-blue-600 text-blue-600"
-                        : "border-transparent text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    <FileText className="w-3 h-3 text-slate-400" />
-                    Trích xuất văn bản
-                  </button>
-                )}
                 {doc.emailMetadata && (
                   <button
                     onClick={() => setActiveTab("email")}
@@ -609,129 +781,287 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                 </button>
               </div>
 
-              {/* Tab 1: Info */}
+              {/* Tab 1: Info (Edit mode vs View mode) */}
               {activeTab === "info" && (
-                <div className="space-y-3.5 text-xs">
-                  {/* Official Number highlight card */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] text-slate-500 block">Số hiệu chính thức</span>
-                      <span className="font-mono text-lg font-black text-blue-700">
-                        {doc.docNumber}
+                isEditing ? (
+                  <div className="space-y-3.5 text-xs animate-in fade-in duration-150">
+                    {/* Header thông báo chế độ sửa */}
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-amber-900">
+                      <div className="flex items-center gap-2">
+                        <Edit3 className="w-4 h-4 text-amber-600 shrink-0" />
+                        <div>
+                          <span className="font-bold block text-[11px]">Chế độ chỉnh sửa thông tin</span>
+                          <span className="text-[10px] text-amber-700">Các thay đổi sẽ được lưu vào hệ thống và ghi nhận lịch sử.</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-amber-200/80 font-bold px-2 py-0.5 rounded text-amber-900">
+                        ĐANG SỬA
                       </span>
                     </div>
-                    <button
-                      id="btn-copy-detail-doc-number"
-                      onClick={handleCopyNumber}
-                      className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
-                    >
-                      {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{isCopied ? "Đã chép" : "Sao chép"}</span>
-                    </button>
-                  </div>
 
-                  {/* Title */}
-                  <div>
-                    <span className="font-bold text-slate-600 block mb-0.5">Trích yếu nội dung:</span>
-                    <p className="text-sm font-bold text-slate-900 leading-snug bg-blue-50/40 p-2.5 rounded-lg border border-blue-100">
-                      {doc.title}
-                    </p>
-                  </div>
+                    {/* Official Number (Protected / Readonly) */}
+                    <div className="bg-slate-100 p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase font-bold flex items-center gap-1">
+                          <Lock className="w-3 h-3 text-slate-400" /> Số hiệu chính thức (Đã cấp số)
+                        </span>
+                        <span className="font-mono text-base font-bold text-slate-700">
+                          {doc.docNumber}
+                        </span>
+                      </div>
+                      <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-medium">
+                        Cố định
+                      </span>
+                    </div>
 
-                  {/* Grid details */}
-                  <div className="grid grid-cols-2 gap-2.5 pt-1">
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Loại văn bản</span>
-                      <span className="font-bold text-slate-800">{doc.categoryName}</span>
-                    </div>
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Phòng ban xử lý</span>
-                      <span className="font-mono font-bold text-slate-800">{doc.departmentCode}</span>
-                    </div>
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Cơ quan ban hành</span>
-                      <span className="font-semibold text-slate-800 truncate block">{doc.issuingAuthority}</span>
-                    </div>
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Người ký & chức danh</span>
-                      <span className="font-semibold text-slate-800 truncate block">{doc.signer}</span>
-                    </div>
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Ngày văn bản</span>
-                      <span className="font-semibold text-slate-800">{formatVietnameseDate(doc.documentDate)}</span>
-                    </div>
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Ngày cấp số vào sổ</span>
-                      <span className="font-semibold text-slate-800">{formatVietnameseDateTime(doc.registrationDate)}</span>
-                    </div>
-                  </div>
-
-                  {/* Summary */}
-                  {doc.summary && (
+                    {/* Title input */}
                     <div>
-                      <span className="font-bold text-slate-600 block mb-0.5">Tóm tắt văn bản:</span>
-                      <p className="text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-100 leading-relaxed">
-                        {doc.summary}
+                      <label className="font-bold text-slate-700 block mb-1">
+                        Trích yếu nội dung <span className="text-rose-500">*</span>:
+                      </label>
+                      <textarea
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        rows={3}
+                        placeholder="Nhập trích yếu tóm tắt nội dung văn bản..."
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-2xs resize-y"
+                      />
+                    </div>
+
+                    {/* Authority & Signer */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Cơ quan ban hành:</label>
+                        <SearchableCombobox
+                          value={editAuthority}
+                          onChange={setEditAuthority}
+                          options={formOptions.issuingAuthorities}
+                          placeholder="Chọn hoặc nhập tên cơ quan..."
+                          modalTitle="Thêm Cơ quan ban hành"
+                          modalPlaceholder="VD: Công ty Cổ phần VCCORP"
+                          modalDescription="Mục này sẽ được lưu lại cho các lần sau."
+                          onAddNewOption={(val) => handleAddNewOption("issuingAuthorities", val)}
+                        />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Người ký & Chức vụ:</label>
+                        <SearchableCombobox
+                          value={editSigner}
+                          onChange={setEditSigner}
+                          options={formOptions.signers}
+                          placeholder="Chọn hoặc nhập người ký & chức vụ..."
+                          modalTitle="Thêm Người ký & Chức vụ"
+                          modalPlaceholder="VD: Nguyễn Văn A - Tổng Giám đốc"
+                          modalDescription="Mục này sẽ được lưu lại cho các lần sau."
+                          onAddNewOption={(val) => handleAddNewOption("signers", val)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Recipient & Department */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Nơi nhận:</label>
+                        <SearchableCombobox
+                          value={editRecipient}
+                          onChange={setEditRecipient}
+                          options={formOptions.recipients}
+                          placeholder="Chọn hoặc nhập nơi nhận..."
+                          modalTitle="Thêm Nơi nhận"
+                          modalPlaceholder="VD: Phòng HCNS, Ban Giám đốc..."
+                          modalDescription="Mục này sẽ được lưu lại cho các lần sau."
+                          onAddNewOption={(val) => handleAddNewOption("recipients", val)}
+                        />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Phòng ban xử lý:</label>
+                        <SearchableCombobox
+                          value={editDepartment}
+                          onChange={setEditDepartment}
+                          options={formOptions.departments}
+                          placeholder="VD: VP, HCNS, KD..."
+                          modalTitle="Thêm Phòng ban"
+                          modalPlaceholder="VD: VP"
+                          modalDescription="Mục này sẽ được lưu lại cho các lần sau."
+                          onAddNewOption={(val) => handleAddNewOption("departments", val)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Date & Urgency & Secrecy */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Ngày văn bản:</label>
+                        <input
+                          type="date"
+                          value={editDocDate}
+                          onChange={(e) => setEditDocDate(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-2xs h-[34px]"
+                        />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Độ khẩn:</label>
+                        <select
+                          value={editUrgency}
+                          onChange={(e) => setEditUrgency(e.target.value as UrgencyLevel)}
+                          className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-2xs h-[34px]"
+                        >
+                          <option value="THUONG">Thường</option>
+                          <option value="KHAN">Khẩn</option>
+                          <option value="THUONG_KHAN">Thượng khẩn</option>
+                          <option value="HOA_TOC">Hỏa tốc</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Độ mật:</label>
+                        <select
+                          value={editSecrecy}
+                          onChange={(e) => setEditSecrecy(e.target.value as SecrecyLevel)}
+                          className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-2xs h-[34px]"
+                        >
+                          <option value="THUONG">Thường</option>
+                          <option value="MAT">Mật</option>
+                          <option value="TOI_MAT">Tối mật</option>
+                          <option value="TUYET_MAT">Tuyệt mật</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Ghi chú nội bộ:</label>
+                      <textarea
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        rows={2}
+                        placeholder="Bút phê, nơi lưu bản cứng, người bàn giao hoặc lưu ý khác..."
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-2xs resize-y"
+                      />
+                    </div>
+
+                    {/* Summary */}
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Tóm tắt nội dung văn bản:</label>
+                      <textarea
+                        value={editSummary}
+                        onChange={(e) => setEditSummary(e.target.value)}
+                        rows={2}
+                        placeholder="Tóm tắt ngắn gọn các ý chính của văn bản..."
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-2xs resize-y"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3.5 text-xs">
+                    {/* Official Number highlight card */}
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                      <div>
+                        <span className="text-[11px] text-slate-500 block">Số hiệu chính thức</span>
+                        <span className="font-mono text-lg font-black text-blue-700">
+                          {doc.docNumber}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                      <button
+                        id="btn-copy-detail-doc-number"
+                        onClick={handleCopyNumber}
+                        className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                      >
+                        {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{isCopied ? "Đã chép" : "Sao chép"}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                    {/* Title */}
+                    <div>
+                      <span className="font-bold text-slate-600 block mb-0.5">Trích yếu nội dung:</span>
+                      <p className="text-sm font-bold text-slate-900 leading-snug bg-blue-50/40 p-2.5 rounded-lg border border-blue-100">
+                        {doc.title}
                       </p>
                     </div>
-                  )}
 
-                  {/* Verification & QR Code */}
-                  <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider block">
-                        Mã xác thực số hóa
-                      </span>
-                      <span className="font-mono font-bold text-xs text-emerald-950">
-                        {doc.verificationCode}
-                      </span>
+                    {/* Grid details */}
+                    <div className="grid grid-cols-2 gap-2.5 pt-1">
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Loại văn bản</span>
+                        <span className="font-bold text-slate-800">{doc.categoryName}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Phòng ban xử lý</span>
+                        <span className="font-mono font-bold text-slate-800">{doc.departmentCode || "VP"}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Cơ quan ban hành</span>
+                        <span className="font-semibold text-slate-800 truncate block">{doc.issuingAuthority || "Nội bộ"}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Người ký & chức danh</span>
+                        <span className="font-semibold text-slate-800 truncate block">{doc.signer || "—"}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Nơi nhận</span>
+                        <span className="font-semibold text-slate-800 truncate block">{doc.recipient || "Nội bộ cơ quan"}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Ngày văn bản</span>
+                        <span className="font-semibold text-slate-800">{formatVietnameseDate(doc.documentDate)}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100 col-span-2 sm:col-span-1">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Ngày cấp số vào sổ</span>
+                        <span className="font-semibold text-slate-800">{formatVietnameseDateTime(doc.registrationDate)}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-100 col-span-2 sm:col-span-1 flex items-center justify-between">
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Độ mật / Khẩn</span>
+                          <span className="font-semibold text-slate-800">
+                            {doc.urgency === "HOA_TOC" ? "Hỏa tốc" : doc.urgency === "THUONG_KHAN" ? "Thượng khẩn" : doc.urgency === "KHAN" ? "Khẩn" : "Thường"}
+                            {" • "}
+                            {doc.secrecy === "TUYET_MAT" ? "Tuyệt mật" : doc.secrecy === "TOI_MAT" ? "Tối mật" : doc.secrecy === "MAT" ? "Mật" : "Thường"}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <span className="px-2 py-0.5 rounded bg-emerald-200 text-emerald-900 text-[10px] font-bold">
-                      HỢP LỆ
-                    </span>
-                  </div>
-                </div>
-              )}
 
-              {/* Tab 2: OCR Fulltext */}
-              {activeTab === "ocr" && (
-                <div className="space-y-3 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-700">
-                      Nội dung chữ trích xuất tự động (OCR AI):
-                    </span>
-                    <button
-                      id="btn-copy-detail-ocr-text"
-                      onClick={handleCopyOcr}
-                      className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
-                    >
-                      {isOcrCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{isOcrCopied ? "Đã sao chép" : "Sao chép toàn văn"}</span>
-                    </button>
-                  </div>
+                    {/* Notes */}
+                    {doc.notes && (
+                      <div>
+                        <span className="font-bold text-slate-600 block mb-0.5">Ghi chú nội bộ:</span>
+                        <p className="text-slate-700 bg-amber-50/50 p-2.5 rounded-lg border border-amber-200/60 leading-relaxed italic">
+                          {doc.notes}
+                        </p>
+                      </div>
+                    )}
 
-                  <div className="p-3 bg-slate-900 text-slate-100 rounded-xl font-mono text-[11px] leading-relaxed max-h-[360px] overflow-y-auto whitespace-pre-wrap selection:bg-blue-600">
-                    {doc.ocrFullText || "Không có nội dung OCR."}
-                  </div>
+                    {/* Summary */}
+                    {doc.summary && (
+                      <div>
+                        <span className="font-bold text-slate-600 block mb-0.5">Tóm tắt văn bản:</span>
+                        <p className="text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-100 leading-relaxed">
+                          {doc.summary}
+                        </p>
+                      </div>
+                    )}
 
-                  {/* Keywords tags */}
-                  {doc.keywords && doc.keywords.length > 0 && (
-                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                      <Tag className="w-3 h-3 text-slate-400" />
-                      {doc.keywords.map((k, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-medium"
-                        >
-                          {k}
+                    {/* Verification & QR Code */}
+                    <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider block">
+                          Mã xác thực số hóa
                         </span>
-                      ))}
+                        <span className="font-mono font-bold text-xs text-emerald-950">
+                          {doc.verificationCode}
+                        </span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-emerald-200 text-emerald-900 text-[10px] font-bold">
+                        HỢP LỆ
+                      </span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )
               )}
 
-              {/* Tab 3: Email Metadata */}
+              {/* Tab: Email Metadata */}
               {activeTab === "email" && doc.emailMetadata && (
                 <div className="space-y-3 text-xs">
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
@@ -825,31 +1155,40 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 
             {/* Bottom Actions */}
             <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(true)}
-                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Xóa văn bản này
-              </button>
-
-              <div className="flex items-center gap-2">
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    disabled={isSavingEdit}
+                    className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50"
+                  >
+                    Hủy sửa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    disabled={isSavingEdit}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingEdit ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    <span>{isSavingEdit ? "Đang lưu thay đổi..." : "Lưu thay đổi"}</span>
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
                 >
-                  Đóng
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Xóa văn bản này
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onPrint(doc)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" /> In lại văn bản
-                </button>
-              </div>
+              )}
             </div>
           </div>
         </div>
