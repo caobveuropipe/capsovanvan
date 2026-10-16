@@ -78,84 +78,81 @@ Nhiệm vụ của bạn là:
       });
     }
 
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: { parts: contents },
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              categoryCode: { type: Type.STRING },
-              categoryName: { type: Type.STRING },
-              confidence: { type: Type.NUMBER },
-              title: { type: Type.STRING },
-              issuingAuthority: { type: Type.STRING },
-              recipient: { type: Type.STRING },
-              signer: { type: Type.STRING },
-              documentDate: { type: Type.STRING },
-              departmentCode: { type: Type.STRING },
-              summary: { type: Type.STRING },
-              ocrFullText: { type: Type.STRING },
-              urgency: { type: Type.STRING },
-              secrecy: { type: Type.STRING },
-              keywords: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
+    const candidateModels = ["gemini-1.5-flash", "gemini-3.8-flash", "gemini-2.0-flash"];
+    const modelConfig = {
+      contents: { parts: contents },
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            categoryCode: { type: Type.STRING },
+            categoryName: { type: Type.STRING },
+            confidence: { type: Type.NUMBER },
+            title: { type: Type.STRING },
+            issuingAuthority: { type: Type.STRING },
+            recipient: { type: Type.STRING },
+            signer: { type: Type.STRING },
+            documentDate: { type: Type.STRING },
+            departmentCode: { type: Type.STRING },
+            summary: { type: Type.STRING },
+            ocrFullText: { type: Type.STRING },
+            urgency: { type: Type.STRING },
+            secrecy: { type: Type.STRING },
+            keywords: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
             },
-            required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
           },
+          required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
         },
-      });
-    } catch (modelErr: any) {
-      if (modelErr?.message?.includes("not found") || modelErr?.message?.includes("404")) {
+      },
+    };
+
+    let response: any = null;
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        console.log(`[Vercel OCR] Đang gọi model ${modelName}...`);
         response = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: { parts: contents },
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                categoryCode: { type: Type.STRING },
-                categoryName: { type: Type.STRING },
-                confidence: { type: Type.NUMBER },
-                title: { type: Type.STRING },
-                issuingAuthority: { type: Type.STRING },
-                recipient: { type: Type.STRING },
-                signer: { type: Type.STRING },
-                documentDate: { type: Type.STRING },
-                departmentCode: { type: Type.STRING },
-                summary: { type: Type.STRING },
-                ocrFullText: { type: Type.STRING },
-                urgency: { type: Type.STRING },
-                secrecy: { type: Type.STRING },
-                keywords: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-              },
-              required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
-            },
-          },
+          model: modelName,
+          ...modelConfig,
         });
-      } else {
-        throw modelErr;
+        if (response && response.text) {
+          console.log(`[Vercel OCR] Model ${modelName} phản hồi thành công.`);
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[Vercel OCR] Model ${modelName} gặp lỗi:`, err?.message || err);
       }
+    }
+
+    if (!response || !response.text) {
+      throw lastError || new Error("Không thể kết nối đến máy chủ AI Google.");
     }
 
     const parsedResult = JSON.parse(response.text || "{}");
     return res.json({ success: true, data: parsedResult });
   } catch (error: any) {
     console.error("Vercel OCR error:", error);
+    let errorMsg = error?.message || "Lỗi xử lý OCR và phân loại văn bản.";
+    try {
+      const parsed = JSON.parse(errorMsg);
+      if (parsed?.error?.message) {
+        if (parsed.error.code === 503 || parsed.error.status === "UNAVAILABLE") {
+          errorMsg = "Máy chủ AI của Google đang quá tải tạm thời (503 High Demand). Vui lòng thử lại sau vài giây.";
+        } else {
+          errorMsg = parsed.error.message;
+        }
+      }
+    } catch (_) {}
+
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to process OCR and classification.",
+      error: errorMsg,
     });
   }
 }

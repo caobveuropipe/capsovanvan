@@ -241,86 +241,83 @@ Nhiệm vụ của bạn là:
       });
     }
 
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: { parts: contents },
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
-              categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
-              confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
-              title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
-              issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
-              recipient: { type: Type.STRING, description: "Nơi nhận" },
-              signer: { type: Type.STRING, description: "Người ký và chức danh" },
-              documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
-              departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
-              summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
-              ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
-              urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
-              secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
-              keywords: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "Các từ khóa chính",
-              },
+    // Danh sách các model ứng viên theo thứ tự ưu tiên: 1.5-flash (ổn định nhất) -> 3.8-flash -> 2.0-flash
+    const candidateModels = ["gemini-1.5-flash", "gemini-3.8-flash", "gemini-2.0-flash"];
+    const modelConfig = {
+      contents: { parts: contents },
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
+            categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
+            confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
+            title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
+            issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
+            recipient: { type: Type.STRING, description: "Nơi nhận" },
+            signer: { type: Type.STRING, description: "Người ký và chức danh" },
+            documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
+            departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
+            summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
+            ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
+            urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
+            secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
+            keywords: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Các từ khóa chính",
             },
-            required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
           },
+          required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
         },
-      });
-    } catch (modelErr: any) {
-      if (modelErr?.message?.includes("not found") || modelErr?.message?.includes("404")) {
+      },
+    };
+
+    let response: any = null;
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        console.log(`[OCR] Đang gọi model ${modelName}...`);
         response = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: { parts: contents },
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
-                categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
-                confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
-                title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
-                issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
-                recipient: { type: Type.STRING, description: "Nơi nhận" },
-                signer: { type: Type.STRING, description: "Người ký và chức danh" },
-                documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
-                departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
-                summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
-                ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
-                urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
-                secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
-                keywords: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: "Các từ khóa chính",
-                },
-              },
-              required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
-            },
-          },
+          model: modelName,
+          ...modelConfig,
         });
-      } else {
-        throw modelErr;
+        if (response && response.text) {
+          console.log(`[OCR] Model ${modelName} phản hồi thành công.`);
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[OCR] Model ${modelName} gặp lỗi:`, err?.message || err);
       }
+    }
+
+    if (!response || !response.text) {
+      throw lastError || new Error("Không thể kết nối đến máy chủ AI Google.");
     }
 
     const parsedResult = JSON.parse(response.text || "{}");
     res.json({ success: true, data: parsedResult });
   } catch (error: any) {
     console.error("OCR & Classification error:", error);
+    let errorMsg = error?.message || "Lỗi xử lý OCR và phân loại văn bản.";
+    try {
+      const parsed = JSON.parse(errorMsg);
+      if (parsed?.error?.message) {
+        if (parsed.error.code === 503 || parsed.error.status === "UNAVAILABLE") {
+          errorMsg = "Máy chủ AI của Google đang quá tải tạm thời (503 High Demand). Vui lòng thử lại sau vài giây.";
+        } else {
+          errorMsg = parsed.error.message;
+        }
+      }
+    } catch (_) {}
+
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to process OCR and classification.",
+      error: errorMsg,
     });
   }
 });
