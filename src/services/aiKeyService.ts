@@ -197,37 +197,58 @@ export async function syncGeminiKeyOnLogin(accessToken: string, email: string): 
 }
 
 /**
- * Kiểm tra tính hợp lệ của Gemini API Key qua backend verify endpoint
+ * Kiểm tra tính hợp lệ của Gemini API Key:
+ * Gọi trực tiếp tới Google Generative Language API (CORS mở 100%, không đi qua proxy để tránh lỗi 405)
  */
 export async function verifyGeminiApiKey(apiKey: string): Promise<{ valid: boolean; message?: string }> {
   if (!apiKey || !apiKey.trim()) {
     return { valid: false, message: "Vui lòng nhập API Key." };
   }
 
-  try {
-    const verifyUrl = getAppApiUrl("/api/verify-gemini-key");
-    const res = await fetch(verifyUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-gemini-api-key": apiKey.trim(),
-      },
-      body: JSON.stringify({ apiKey: apiKey.trim() }),
-    });
+  const trimmedKey = apiKey.trim();
 
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && json.success) {
-      return { valid: true, message: "API Key hoạt động hoàn hảo!" };
+  try {
+    // 1. Kiểm tra trực tiếp tới Google Generative Language API qua phương thức GET
+    const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(trimmedKey)}`;
+    const googleRes = await fetch(googleUrl);
+    const googleJson = await googleRes.json().catch(() => ({}));
+
+    if (googleRes.ok && googleJson.models) {
+      return { valid: true, message: "Kết nối Google Gemini API thành công! Key đã sẵn sàng." };
     }
 
-    return {
-      valid: false,
-      message: json.error || "API Key không hợp lệ hoặc đã bị vô hiệu hóa.",
-    };
+    // Nếu Google trả về lỗi
+    let errMsg = googleJson?.error?.message || "API Key không hợp lệ hoặc đã bị vô hiệu hóa.";
+    if (errMsg.includes("API key not valid")) {
+      errMsg = "API Key không chính xác hoặc đã bị vô hiệu hóa trên Google AI Studio.";
+    }
+    return { valid: false, message: errMsg };
   } catch (err: any) {
-    return {
-      valid: false,
-      message: "Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau.",
-    };
+    // 2. Dự phòng: Thử qua backend nếu kết nối trực tiếp bị chặn mạng
+    try {
+      const verifyUrl = getAppApiUrl("/api/verify-gemini-key");
+      const res = await fetch(verifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": trimmedKey,
+        },
+        body: JSON.stringify({ apiKey: trimmedKey }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success) {
+        return { valid: true, message: "API Key hoạt động hoàn hảo!" };
+      }
+      return {
+        valid: false,
+        message: json.error || "API Key không hợp lệ.",
+      };
+    } catch (_) {
+      return {
+        valid: false,
+        message: "Không thể kết nối đến máy chủ Google AI. Vui lòng kiểm tra lại kết nối mạng.",
+      };
+    }
   }
 }

@@ -44,6 +44,7 @@ import {
 } from "../services/storage";
 import { SearchableCombobox } from "./SearchableCombobox";
 import { getActiveGeminiKey } from "../services/aiKeyService";
+import { executeDirectGoogleOcr } from "../services/directGeminiOcr";
 import { getAppApiUrl } from "../utils/apiUrl";
 
 interface IntakeModalProps {
@@ -429,22 +430,49 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
         payload.textHint = textContent;
       }
 
-      const ocrUrl = getAppApiUrl("/api/ocr-classify");
-      const res = await fetch(ocrUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-gemini-api-key": apiKey,
-        },
-        body: JSON.stringify(payload),
-      });
+      let d: any = null;
+      try {
+        const ocrUrl = getAppApiUrl("/api/ocr-classify");
+        const res = await fetch(ocrUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-gemini-api-key": apiKey,
+          },
+          body: JSON.stringify(payload),
+        });
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.success || !json.data) {
-        throw new Error(json.error || `Lỗi máy chủ OCR (${res.status}). Vui lòng kiểm tra lại API Key.`);
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.success && json.data) {
+          d = json.data;
+        } else if (res.status === 405 || !res.ok) {
+          console.warn(`[OCR] Backend proxy trả về ${res.status}, chuyển sang gọi trực tiếp Google AI...`);
+          d = await executeDirectGoogleOcr({
+            apiKey,
+            imageBase64,
+            mimeType,
+            textHint: textContent,
+            categories: categories.map((c) => ({ code: c.code, name: c.name })),
+          });
+        } else {
+          throw new Error(json.error || `Lỗi máy chủ OCR (${res.status}). Vui lòng kiểm tra lại API Key.`);
+        }
+      } catch (backendErr: any) {
+        if (!d) {
+          console.warn("[OCR] Thử fallback gọi trực tiếp Google AI do:", backendErr?.message);
+          d = await executeDirectGoogleOcr({
+            apiKey,
+            imageBase64,
+            mimeType,
+            textHint: textContent,
+            categories: categories.map((c) => ({ code: c.code, name: c.name })),
+          });
+        }
       }
 
-      const d = json.data;
+      if (!d) {
+        throw new Error("Không thể xử lý dữ liệu OCR từ văn bản này.");
+      }
 
       // Match category
       if (d.categoryCode) {
