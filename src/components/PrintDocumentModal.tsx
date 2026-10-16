@@ -39,24 +39,24 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
   return (
     <div
       id="print-modal-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto pb-[64px] sm:pb-0 print:p-0 print:overflow-visible print:pb-0"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto print:p-0 print:overflow-visible print:pb-0"
     >
       <div
         id="print-modal-card"
-        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[calc(100dvh-64px)] sm:max-h-[95vh] print:max-h-none print:h-auto animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[95vh] print:max-h-none print:h-auto animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Modal Controls Header (Hidden in Print) */}
-        <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-4 bg-slate-900 text-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-b border-slate-800 shrink-0 print:hidden">
+        <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-4 bg-white text-slate-900 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-b border-slate-200 shrink-0 print:hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
                 <Printer className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 truncate">
+                <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 truncate">
                   In Ấn & Xuất Bản Văn Bản
                 </h2>
-                <p className="text-[11px] sm:text-xs text-slate-400 truncate hidden xs:block">
+                <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block">
                   Lựa chọn mẫu in phiếu tiếp nhận hoặc in văn bản gốc kèm dấu số điện tử
                 </p>
               </div>
@@ -65,7 +65,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="sm:hidden text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 cursor-pointer"
+              className="sm:hidden text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -73,14 +73,14 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
 
           <div className="flex items-center justify-between sm:justify-end gap-2">
             {/* Layout switch */}
-            <div className="bg-slate-800 p-1 rounded-lg border border-slate-700 flex items-center gap-1 text-xs flex-1 sm:flex-initial">
+            <div className="bg-slate-100 p-1 rounded-lg border border-slate-200 flex items-center gap-1 text-xs flex-1 sm:flex-initial">
               <button
                 type="button"
                 onClick={() => setPrintLayout("slip")}
                 className={`flex-1 sm:flex-initial px-2 sm:px-3 py-1 rounded-md font-semibold transition-all cursor-pointer text-center text-[11px] sm:text-xs ${
                   printLayout === "slip"
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-white text-blue-600 shadow-xs border border-slate-200"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 Phiếu cấp số
@@ -90,8 +90,8 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                 onClick={() => setPrintLayout("document")}
                 className={`flex-1 sm:flex-initial px-2 sm:px-3 py-1 rounded-md font-semibold transition-all cursor-pointer text-center text-[11px] sm:text-xs ${
                   printLayout === "document"
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-white text-blue-600 shadow-xs border border-slate-200"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 Văn bản có dấu
@@ -110,7 +110,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="hidden sm:block text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 cursor-pointer min-h-[34px] min-w-[34px]"
+              className="hidden sm:block text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer min-h-[34px] min-w-[34px]"
             >
               <X className="w-5 h-5" />
             </button>

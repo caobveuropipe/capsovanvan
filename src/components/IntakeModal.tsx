@@ -709,23 +709,23 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   return (
     <div
       id="intake-modal-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto pb-[64px] sm:pb-0"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto"
     >
       <div
         id="intake-modal-card"
-        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[calc(100dvh-64px)] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Modal Header */}
-        <div className="pl-4 pr-14 sm:px-6 py-3 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div className="pl-4 pr-14 sm:px-6 py-3 sm:py-3.5 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 truncate">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 truncate">
                 Tiếp nhận & Cấp số Văn bản Tự động
               </h2>
-              <p className="text-[11px] sm:text-xs text-slate-400 truncate hidden xs:block">
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block">
                 Phân loại thông minh qua OCR AI từ Tải tệp, Chụp ảnh hoặc Tệp đính kèm Email
               </p>
             </div>
@@ -737,7 +737,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
               stopCamera();
               onClose();
             }}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center"
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
@@ -1227,25 +1227,25 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                 </div>
 
                 {/* Official Numbering Showcase Banner */}
-                <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-4 rounded-2xl shadow-lg border border-blue-800">
-                  <div className="flex items-center justify-between text-xs text-blue-200 mb-1">
+                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white p-4 rounded-2xl shadow-md border border-blue-500">
+                  <div className="flex items-center justify-between text-xs text-blue-100 mb-1">
                     <span className="font-semibold flex items-center gap-1.5">
-                      <Hash className="w-4 h-4 text-emerald-400" />
+                      <Hash className="w-4 h-4 text-emerald-300" />
                       Số văn bản chính thức sẽ được cấp:
                     </span>
-                    <span className="text-[11px] bg-blue-800/80 px-2 py-0.5 rounded text-blue-200 border border-blue-700">
+                    <span className="text-[11px] bg-white/20 backdrop-blur-xs px-2 py-0.5 rounded text-white font-medium border border-white/30">
                       Tự động theo cấu hình danh mục
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between bg-slate-950/60 p-3 rounded-xl border border-blue-700/50 mt-1">
-                    <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-400 tracking-tight">
+                  <div className="flex items-center justify-between bg-black/15 backdrop-blur-xs p-3 rounded-xl border border-white/20 mt-1">
+                    <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-300 tracking-tight">
                       {finalDocNumber || "Chưa chọn danh mục"}
                     </div>
-                    <div className="text-right text-xs text-slate-300">
+                    <div className="text-right text-xs text-blue-100">
                       <div>Loại: <strong className="text-white">{selectedCategory?.name}</strong></div>
-                      <div className="text-[11px] text-slate-400">
-                        Tiền tố: <code className="text-blue-300">{selectedCategory?.prefix || "(Trống)"}</code> | Hậu tố: <code className="text-blue-300">{selectedCategory?.suffix || "(Trống)"}</code>
+                      <div className="text-[11px] text-blue-200">
+                        Tiền tố: <code className="text-white font-semibold">{selectedCategory?.prefix || "(Trống)"}</code> | Hậu tố: <code className="text-white font-semibold">{selectedCategory?.suffix || "(Trống)"}</code>
                       </div>
                     </div>
                   </div>

@@ -316,28 +316,28 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   return (
     <div
       id="document-detail-modal-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto pb-[64px] sm:pb-0"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto"
     >
       <div
         id="document-detail-modal-card"
-        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[calc(100dvh-64px)] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header */}
-        <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-3.5 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
               <FileText className="w-4 h-4" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="font-mono text-sm sm:text-base font-bold text-emerald-400 truncate">
+                <span className="font-mono text-sm sm:text-base font-bold text-blue-700 truncate">
                   {doc.docNumber}
                 </span>
-                <span className="text-[10px] sm:text-xs bg-slate-800 text-slate-300 px-1.5 sm:px-2 py-0.5 rounded border border-slate-700 font-semibold shrink-0">
+                <span className="text-[10px] sm:text-xs bg-slate-100 text-slate-700 px-1.5 sm:px-2 py-0.5 rounded border border-slate-200 font-semibold shrink-0">
                   {doc.categoryName}
                 </span>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-400 truncate max-w-xs sm:max-w-lg hidden xs:block">
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate max-w-xs sm:max-w-lg hidden xs:block">
                 {doc.title}
               </p>
             </div>
@@ -349,10 +349,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                 href={activeDriveLink}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-700/60 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer min-h-[36px] border border-emerald-500/40"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold shadow-2xs cursor-pointer min-h-[36px] border border-emerald-200 transition-colors"
                 title={`Mở tài liệu gốc ${currentImage?.name ? `(${currentImage.name})` : ""} trên Google Drive`}
               >
-                <HardDrive className="w-3.5 h-3.5 text-emerald-300" />
+                <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="hidden xs:inline">Google Drive</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
@@ -361,18 +361,18 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             {/* Nút Chỉnh sửa (chỉ hiện khi xem, khi sửa chỉ hiển thị badge trạng thái) */}
             {onUpdate && (
               isEditing ? (
-                <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/20 border border-amber-500/30 rounded-lg text-amber-300 text-xs font-semibold">
-                  <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs font-semibold">
+                  <Edit3 className="w-3.5 h-3.5 text-amber-600" />
                   <span className="hidden xs:inline">Đang chỉnh sửa</span>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={handleStartEdit}
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold shadow-xs cursor-pointer min-h-[36px] transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold shadow-2xs cursor-pointer min-h-[36px] transition-colors"
                   title="Chỉnh sửa trích yếu, người ký, ghi chú, đơn vị..."
                 >
-                  <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                  <Edit3 className="w-3.5 h-3.5 text-amber-600" />
                   <span className="hidden xs:inline">Sửa thông tin</span>
                   <span className="xs:hidden">Sửa</span>
                 </button>
@@ -389,7 +389,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
+              className="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
             >
               <X className="w-5 h-5" />
             </button>
@@ -397,15 +397,15 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
         </div>
 
         {/* Mobile View Switcher (lg:hidden) */}
-        <div className="lg:hidden bg-slate-800 border-b border-slate-700 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
+        <div className="lg:hidden bg-slate-100 border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
           <div className="grid grid-cols-2 gap-2 w-full">
             <button
               type="button"
               onClick={() => setMobileView("image")}
               className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center cursor-pointer ${
                 mobileView === "image"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                  ? "bg-white text-blue-600 shadow-xs border border-slate-200"
+                  : "bg-slate-100 text-slate-600 hover:text-slate-900"
               }`}
             >
               {isPdf ? "Tệp PDF" : isDocx ? "Tệp Word" : `Ảnh văn bản (${doc.images?.length || 0})`}
@@ -415,8 +415,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               onClick={() => setMobileView("details")}
               className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center cursor-pointer ${
                 mobileView === "details"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                  ? "bg-white text-blue-600 shadow-xs border border-slate-200"
+                  : "bg-slate-100 text-slate-600 hover:text-slate-900"
               }`}
             >
               Thông tin & OCR
@@ -427,39 +427,39 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
         {/* Content: 2-column layout (Left: Image/Document viewer, Right: Metadata & OCR) */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
           {/* Left Column: Interactive Document Viewer (7 cols) */}
-          <div className={`lg:col-span-7 bg-slate-950 p-3 sm:p-4 overflow-y-auto ${mobileView === "image" ? "flex flex-col justify-between" : "hidden lg:flex lg:flex-col lg:justify-between"} border-r border-slate-800 select-none`}>
+          <div className={`lg:col-span-7 bg-slate-50/90 p-3 sm:p-4 overflow-y-auto ${mobileView === "image" ? "flex flex-col justify-between" : "hidden lg:flex lg:flex-col lg:justify-between"} border-r border-slate-200 select-none`}>
             {/* Viewer Toolbar */}
-            <div className="flex items-center justify-between bg-slate-900/90 backdrop-blur-xs p-2 rounded-xl border border-slate-800 mb-3 text-xs text-slate-300">
+            <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-slate-200 shadow-2xs mb-3 text-xs text-slate-700">
               {isRawImage && currentImage?.dataUrl ? (
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setZoomLevel((prev) => Math.max(50, prev - 25))}
                     title="Thu nhỏ"
-                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-900 transition-colors"
                   >
                     <ZoomOut className="w-4 h-4" />
                   </button>
-                  <span className="px-2 font-mono text-[11px] text-slate-400">
+                  <span className="px-2 font-mono text-[11px] text-slate-600">
                     {zoomLevel}%
                   </span>
                   <button
                     onClick={() => setZoomLevel((prev) => Math.min(250, prev + 25))}
                     title="Phóng to"
-                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-900 transition-colors"
                   >
                     <ZoomIn className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setRotation((prev) => (prev + 90) % 360)}
                     title="Xoay 90 độ"
-                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white ml-1"
+                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-900 ml-1 transition-colors"
                   >
                     <RotateCw className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-xs text-slate-400 px-1">
-                  <File className="w-4 h-4 text-blue-400" />
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 px-1 font-medium">
+                  <File className="w-4 h-4 text-blue-600" />
                   <span className="truncate max-w-[220px]">
                     {currentImage?.name || (isPdf ? "Tài liệu PDF" : isDocx ? "Tài liệu DOCX" : "Tài liệu văn bản")}
                   </span>
@@ -469,7 +469,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               {/* Action Buttons */}
               <div className="flex items-center gap-2">
                 {isRawImage && currentImage?.dataUrl && (
-                  <label className="flex items-center gap-1.5 text-[11px] cursor-pointer text-slate-300">
+                  <label className="flex items-center gap-1.5 text-[11px] cursor-pointer text-slate-600 font-medium">
                     <input
                       type="checkbox"
                       checked={showElectronicStamp}
@@ -484,7 +484,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                   <button
                     onClick={handleDownloadImage}
                     title="Tải tệp đính kèm về máy"
-                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white flex items-center gap-1"
+                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1 transition-colors"
                   >
                     <Download className="w-4 h-4" />
                     <span className="text-[11px] hidden sm:inline">Tải về</span>
@@ -494,7 +494,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             </div>
 
             {/* Document Canvas Preview Box */}
-            <div className="flex-1 overflow-auto flex items-center justify-center p-2 rounded-xl bg-slate-900/50 border border-slate-800/80 min-h-[380px] max-h-[520px] relative">
+            <div className="flex-1 overflow-auto flex items-center justify-center p-2 rounded-xl bg-white border border-slate-200 shadow-xs min-h-[380px] max-h-[520px] relative">
               {isPdf ? (
                 /* PDF Interactive Viewer */
                 <div className="w-full h-full min-h-[460px] flex flex-col items-center justify-center relative">
@@ -709,8 +709,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                     <button
                       key={img.id}
                       onClick={() => setActiveImageIndex(idx)}
-                      className={`relative w-12 h-16 rounded overflow-hidden border-2 shrink-0 cursor-pointer flex items-center justify-center ${
-                        activeImageIndex === idx ? "border-blue-500 bg-slate-800" : "border-slate-700 bg-slate-900 opacity-60"
+                      className={`relative w-12 h-16 rounded overflow-hidden border-2 shrink-0 cursor-pointer flex items-center justify-center transition-all ${
+                        activeImageIndex === idx ? "border-blue-600 ring-2 ring-blue-500/20 bg-blue-50" : "border-slate-200 bg-slate-100 hover:border-slate-300 opacity-70"
                       }`}
                     >
                       {thumbIsPdf ? (

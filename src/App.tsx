@@ -919,11 +919,11 @@ export default function App() {
   // 1. Loading splash screen khi đang khởi tạo dữ liệu
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white font-sans">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xl shadow-blue-500/30 animate-pulse mb-4">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800 font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xl shadow-blue-500/20 animate-pulse mb-4">
           <FileText className="w-6 h-6 text-white" />
         </div>
-        <p className="text-sm font-semibold text-slate-300">Đang tải dữ liệu Sổ Cấp Số Văn Bản...</p>
+        <p className="text-sm font-semibold text-slate-600">Đang tải dữ liệu Sổ Cấp Số Văn Bản...</p>
       </div>
     );
   }
@@ -971,7 +971,7 @@ export default function App() {
       />
 
       {/* Main View Area */}
-      <main className="flex-1 pb-20 md:pb-2">
+      <main className="flex-1 pb-32 md:pb-6">
         {/* Banner thông báo nhắc nhở nếu chưa kết nối hoặc chưa cấu hình folder Google Drive */}
         {!driveConfig.userEmail ? (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">

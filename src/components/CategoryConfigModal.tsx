@@ -180,23 +180,23 @@ export const CategoryConfigModal: React.FC<CategoryConfigModalProps> = ({
   return (
     <div
       id="category-config-modal-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto pb-[64px] sm:pb-0"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto"
     >
       <div
         id="category-config-modal-card"
-        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[calc(100dvh-64px)] sm:max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header */}
-        <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-4 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
               <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-lg font-bold text-white flex items-center gap-2 truncate">
+              <h2 className="text-sm sm:text-lg font-bold text-slate-900 flex items-center gap-2 truncate">
                 Cấu hình Phân loại & Tiền/Hậu tố
               </h2>
-              <p className="text-[11px] sm:text-xs text-slate-400 truncate hidden xs:block">
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block">
                 Tùy chỉnh quy tắc sinh số tự động cho từng danh mục văn bản
               </p>
             </div>
@@ -204,22 +204,22 @@ export const CategoryConfigModal: React.FC<CategoryConfigModalProps> = ({
           <button
             id="btn-close-config-modal"
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Mobile View Switcher (md:hidden) */}
-        <div className="md:hidden bg-slate-800 border-b border-slate-700 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
+        <div className="md:hidden bg-slate-100 border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
           <div className="grid grid-cols-2 gap-2 w-full">
             <button
               type="button"
               onClick={() => setMobileTab("list")}
               className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center cursor-pointer min-h-[36px] ${
                 mobileTab === "list"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                  ? "bg-white text-blue-600 shadow-xs border border-slate-200"
+                  : "bg-slate-100 text-slate-600 hover:text-slate-900"
               }`}
             >
               Danh sách loại ({catList.length})
@@ -229,8 +229,8 @@ export const CategoryConfigModal: React.FC<CategoryConfigModalProps> = ({
               onClick={() => setMobileTab("edit")}
               className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center cursor-pointer min-h-[36px] ${
                 mobileTab === "edit"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                  ? "bg-white text-blue-600 shadow-xs border border-slate-200"
+                  : "bg-slate-100 text-slate-600 hover:text-slate-900"
               }`}
             >
               Cấu hình: {targetCatForPreview?.code || "Chi tiết"}
@@ -362,27 +362,27 @@ export const CategoryConfigModal: React.FC<CategoryConfigModalProps> = ({
                 </div>
 
                 {/* Live Number Output Box */}
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4 rounded-xl shadow-md border border-slate-700">
-                  <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-                    <span className="font-semibold flex items-center gap-1 text-slate-300">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white p-4 rounded-xl shadow-md border border-blue-500">
+                  <div className="flex items-center justify-between text-xs text-blue-100 mb-2">
+                    <span className="font-semibold flex items-center gap-1 text-white">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                       Mẫu số thực tế sẽ được cấp tự động:
                     </span>
-                    <span className="font-mono text-[11px] bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    <span className="font-mono text-[11px] bg-white/20 backdrop-blur-xs px-2 py-0.5 rounded text-white font-medium border border-white/30">
                       Công thức: {targetCatForPreview.formatTemplate || "{NUM}{SUFFIX}"}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                  <div className="flex items-center gap-4 bg-black/15 backdrop-blur-xs p-3 rounded-lg border border-white/20">
                     <div className="flex-1">
-                      <div className="text-[11px] text-slate-400">Số tiếp theo:</div>
-                      <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-400 tracking-tight">
+                      <div className="text-[11px] text-blue-100">Số tiếp theo:</div>
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-300 tracking-tight">
                         {nextPreview}
                       </div>
                     </div>
-                    <div className="hidden sm:block border-l border-slate-800 pl-4 text-xs text-slate-400">
-                      <div>Số hiện tại đã cấp: <span className="font-mono text-slate-300">{currentPreview}</span></div>
-                      <div>Số kế tiếp: <span className="font-mono text-slate-300">{nextNextPreview}</span></div>
+                    <div className="hidden sm:block border-l border-white/20 pl-4 text-xs text-blue-100">
+                      <div>Số hiện tại đã cấp: <span className="font-mono text-white font-semibold">{currentPreview}</span></div>
+                      <div>Số kế tiếp: <span className="font-mono text-white font-semibold">{nextNextPreview}</span></div>
                     </div>
                   </div>
                 </div>
@@ -679,7 +679,7 @@ export const CategoryConfigModal: React.FC<CategoryConfigModalProps> = ({
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium cursor-pointer"
+            className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg font-medium cursor-pointer transition-colors"
           >
             Đóng
           </button>
