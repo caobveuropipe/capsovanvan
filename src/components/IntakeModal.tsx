@@ -44,6 +44,7 @@ import {
 } from "../services/storage";
 import { SearchableCombobox } from "./SearchableCombobox";
 import { getActiveGeminiKey } from "../services/aiKeyService";
+import { getAppApiUrl } from "../utils/apiUrl";
 
 interface IntakeModalProps {
   isOpen: boolean;
@@ -428,7 +429,8 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
         payload.textHint = textContent;
       }
 
-      const res = await fetch("/api/ocr-classify", {
+      const ocrUrl = getAppApiUrl("/api/ocr-classify");
+      const res = await fetch(ocrUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

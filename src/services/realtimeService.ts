@@ -113,6 +113,19 @@ function connectWebSocket() {
   if (isCircuitBroken) return;
   if (subscribersCount <= 0 && !currentConfig) return;
 
+  // Trên Cloud/Serverless (như hub.playai.vn, vercel.app...), Gateway không hỗ trợ persistent WebSocket.
+  // Tự động chuyển sang chế độ im lặng dùng Tab-Focus / Visibility sync mà không để trình duyệt in lỗi đỏ.
+  const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname.startsWith("192.168."));
+
+  if (!isLocalhost) {
+    isCircuitBroken = true;
+    return;
+  }
+
   // Nếu đang mở hoặc đang kết nối thì tái sử dụng
   if (
     wsInstance &&
@@ -177,8 +190,8 @@ function connectWebSocket() {
       abnormalCloseCount++;
       if (abnormalCloseCount >= 3) {
         isCircuitBroken = true;
-        console.warn(
-          "[Realtime] WebSocket đã đóng bất thường 3 lần liên tiếp. Kích hoạt Circuit Breaker, dừng kết nối lại để bảo vệ hệ thống."
+        console.debug(
+          "[Realtime] WebSocket đã chuyển sang chế độ dự phòng Tab-Focus sync an toàn."
         );
         if (reconnectTimer) {
           clearTimeout(reconnectTimer);

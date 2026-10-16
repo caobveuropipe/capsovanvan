@@ -1,4 +1,5 @@
 import { getGoogleDriveConfig, readAppDataFile, saveAppDataFile } from "./googleDriveService";
+import { getAppApiUrl } from "../utils/apiUrl";
 
 export interface AiKeyConfig {
   apiKey: string;
@@ -204,7 +205,8 @@ export async function verifyGeminiApiKey(apiKey: string): Promise<{ valid: boole
   }
 
   try {
-    const res = await fetch("/api/verify-gemini-key", {
+    const verifyUrl = getAppApiUrl("/api/verify-gemini-key");
+    const res = await fetch(verifyUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
