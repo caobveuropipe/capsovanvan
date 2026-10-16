@@ -22,7 +22,7 @@ export default async function handler(req: any, res: any) {
       },
     });
 
-    const candidateModels = ["gemini-1.5-flash", "gemini-3.8-flash", "gemini-2.0-flash"];
+    const candidateModels = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest"];
     let response: any = null;
     let lastError: any = null;
 

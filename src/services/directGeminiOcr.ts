@@ -61,7 +61,7 @@ Chỉ trả về JSON thuần túy hợp lệ.`;
     parts.push({ text: "Hãy đọc văn bản này, trích xuất toàn bộ nội dung OCR và phân loại chính xác theo định dạng JSON yêu cầu." });
   }
 
-  const candidateModels = ["gemini-1.5-flash", "gemini-3.8-flash", "gemini-2.0-flash"];
+  const candidateModels = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest"];
   let lastError: any = null;
 
   for (const model of candidateModels) {
@@ -85,7 +85,9 @@ Chỉ trả về JSON thuần túy hợp lệ.`;
         throw new Error(errorMsg);
       }
 
-      const text = resJson?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const candidateParts = resJson?.candidates?.[0]?.content?.parts || [];
+      const textPart = candidateParts.find((p: any) => p.text && !p.thought) || candidateParts[candidateParts.length - 1];
+      const text = textPart?.text;
       if (!text) {
         throw new Error("Không nhận được nội dung từ mô hình AI.");
       }

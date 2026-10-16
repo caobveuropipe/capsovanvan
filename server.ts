@@ -241,8 +241,8 @@ Nhiệm vụ của bạn là:
       });
     }
 
-    // Danh sách các model ứng viên theo thứ tự ưu tiên: 1.5-flash (ổn định nhất) -> 3.8-flash -> 2.0-flash
-    const candidateModels = ["gemini-1.5-flash", "gemini-3.8-flash", "gemini-2.0-flash"];
+    // Danh sách các model ứng viên theo thứ tự ưu tiên: 3.5-flash -> 3.7-flash -> 3.8-flash -> flash-latest
+    const candidateModels = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest"];
     const modelConfig = {
       contents: { parts: contents },
       config: {
