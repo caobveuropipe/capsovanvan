@@ -716,7 +716,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
         className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[calc(100dvh-64px)] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Modal Header */}
-        <div className="px-4 sm:px-6 py-3 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div className="pl-4 pr-14 sm:px-6 py-3 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shrink-0">
               <Sparkles className="w-4 h-4" />

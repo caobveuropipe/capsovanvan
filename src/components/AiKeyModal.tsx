@@ -142,7 +142,7 @@ export const AiKeyModal: React.FC<AiKeyModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in overflow-y-auto">
       <div className="relative w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[calc(100dvh-2rem)] sm:max-h-[88vh] flex flex-col">
         {/* Header - Cố định */}
-        <div className="shrink-0 px-5 py-3.5 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between">
+        <div className="shrink-0 pl-4 pr-14 sm:px-5 py-3.5 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
               <Sparkles className="w-4 h-4 text-amber-300" />

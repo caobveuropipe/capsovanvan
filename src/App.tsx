@@ -51,6 +51,7 @@ import {
   renewGoogleDriveSession,
   loginWithGoogle,
   logoutGoogle,
+  syncActiveFolderFromDrive,
 } from "./services/googleDriveService";
 import {
   initRealtime,
@@ -135,6 +136,26 @@ export default function App() {
 
     setIsDriveSyncing(true);
     try {
+      // 0. Đồng bộ cấu hình thư mục từ Drive appDataFolder (giúp các thiết bị tự động nhảy vào đúng thư mục của nhau)
+      if (currentConfig.accessToken) {
+        try {
+          const remoteFolder = await syncActiveFolderFromDrive(currentConfig.accessToken);
+          if (remoteFolder?.folderId && remoteFolder.folderId !== currentConfig.folderId) {
+            currentConfig.folderId = remoteFolder.folderId;
+            currentConfig.folderName = remoteFolder.folderName;
+            saveGoogleDriveConfig(currentConfig);
+            setDriveConfig({ ...currentConfig });
+            updateRealtimeFolder(remoteFolder.folderId);
+          }
+        } catch (_) {}
+
+        if (currentConfig.userEmail) {
+          syncGeminiKeyOnLogin(currentConfig.accessToken, currentConfig.userEmail)
+            .then((k) => setHasAiKey(!!k))
+            .catch(() => {});
+        }
+      }
+
       // 1. Phân giải Canonical File qua resolveCanonicalDriveDatabase (tự động reconcile nếu có duplicate - EFR-21 & EFR-22)
       let canonicalDbFile = await resolveCanonicalDriveDatabase(
         currentConfig.accessToken,
@@ -320,9 +341,21 @@ export default function App() {
       setIsOfflineMode(false);
       localStorage.removeItem("docnum_offline_mode");
       showToast(`Đăng nhập Google Workspace (${updated.userEmail}) thành công!`, "success");
-      // Đồng bộ ngầm Gemini AI Key từ Google Drive appDataFolder (EFR-02 & EFR-03)
+      // Đồng bộ ngầm thư mục Drive & Gemini AI Key từ Google Drive appDataFolder
       if (updated.accessToken && updated.userEmail) {
-        syncGeminiKeyOnLogin(updated.accessToken, updated.userEmail).catch(() => {});
+        try {
+          const remoteFolder = await syncActiveFolderFromDrive(updated.accessToken);
+          if (remoteFolder?.folderId && remoteFolder.folderId !== updated.folderId) {
+            updated.folderId = remoteFolder.folderId;
+            updated.folderName = remoteFolder.folderName;
+            saveGoogleDriveConfig(updated);
+            setDriveConfig({ ...updated });
+            updateRealtimeFolder(remoteFolder.folderId);
+          }
+        } catch (_) {}
+
+        const syncedKey = await syncGeminiKeyOnLogin(updated.accessToken, updated.userEmail).catch(() => "");
+        setHasAiKey(!!syncedKey);
       }
       // Tự động kéo dữ liệu về ngay sau khi đăng nhập
       setTimeout(() => {
@@ -363,7 +396,19 @@ export default function App() {
       setDriveConfig(updated);
       showToast(`Đã gia hạn phiên Google Drive (${updated.userEmail}) thành công!`, "success");
       if (updated.accessToken && updated.userEmail) {
-        syncGeminiKeyOnLogin(updated.accessToken, updated.userEmail).catch(() => {});
+        try {
+          const remoteFolder = await syncActiveFolderFromDrive(updated.accessToken);
+          if (remoteFolder?.folderId && remoteFolder.folderId !== updated.folderId) {
+            updated.folderId = remoteFolder.folderId;
+            updated.folderName = remoteFolder.folderName;
+            saveGoogleDriveConfig(updated);
+            setDriveConfig({ ...updated });
+            updateRealtimeFolder(remoteFolder.folderId);
+          }
+        } catch (_) {}
+
+        const syncedKey = await syncGeminiKeyOnLogin(updated.accessToken, updated.userEmail).catch(() => "");
+        setHasAiKey(!!syncedKey);
       }
       setTimeout(() => {
         syncWithGoogleDrive(false);
@@ -495,16 +540,26 @@ export default function App() {
     };
   }, []);
 
-  // Kiểm tra trạng thái AI Key khi tài khoản thay đổi
+  // Kiểm tra và đồng bộ trạng thái AI Key khi tài khoản thay đổi
   useEffect(() => {
     if (driveConfig.userEmail) {
-      getActiveGeminiKey(driveConfig.userEmail).then((key) => {
-        setHasAiKey(!!key);
-      });
+      if (driveConfig.accessToken && !isDriveTokenExpired(driveConfig)) {
+        syncGeminiKeyOnLogin(driveConfig.accessToken, driveConfig.userEmail)
+          .then((key) => {
+            setHasAiKey(!!key);
+          })
+          .catch(() => {
+            getActiveGeminiKey(driveConfig.userEmail).then((k) => setHasAiKey(!!k));
+          });
+      } else {
+        getActiveGeminiKey(driveConfig.userEmail).then((key) => {
+          setHasAiKey(!!key);
+        });
+      }
     } else {
       setHasAiKey(false);
     }
-  }, [driveConfig.userEmail]);
+  }, [driveConfig.userEmail, driveConfig.accessToken]);
 
   // Category changes handler
   const handleSaveCategories = async (updated: DocumentCategory[]) => {

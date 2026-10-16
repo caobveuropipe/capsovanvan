@@ -491,20 +491,34 @@ export async function loginWithGoogle(options?: {
   // Lấy hồ sơ tài khoản Google
   const userData = await fetchGoogleUserProfile(accessToken);
 
-  // Nhận diện hoặc tạo thư mục mặc định nếu chưa cấu hình
+  // 1. Kiểm tra trước trên Drive xem tài khoản này đã có thư mục lưu trữ được cấu hình từ thiết bị khác chưa
   let targetFolderId = currentConfig.folderId;
   let targetFolderName = currentConfig.folderName;
 
+  try {
+    const remoteFolder = await syncActiveFolderFromDrive(accessToken);
+    if (remoteFolder?.folderId) {
+      targetFolderId = remoteFolder.folderId;
+      targetFolderName = remoteFolder.folderName;
+    }
+  } catch (_) {}
+
+  // 2. Nhận diện hoặc tạo thư mục mặc định nếu chưa cấu hình
   if (!targetFolderId) {
     try {
       const folderRes = await findOrCreateDriveFolder(accessToken, "[VCC] Sổ Văn Bản Điện Tử");
       targetFolderId = folderRes.id;
       targetFolderName = folderRes.name || "[VCC] Sổ Văn Bản Điện Tử";
+      // Lưu lại lên Drive để các thiết bị khác đồng bộ
+      await saveActiveFolderToDrive(accessToken, targetFolderId, targetFolderName);
     } catch (fErr) {
       console.warn("Could not find or create folder, using root", fErr);
       targetFolderId = "root";
       targetFolderName = "Google Drive (Thư mục gốc)";
     }
+  } else {
+    // Đảm bảo thông tin thư mục đã chọn được đồng bộ lên Drive appDataFolder
+    saveActiveFolderToDrive(accessToken, targetFolderId, targetFolderName || "").catch(() => {});
   }
 
   const updatedConfig: GoogleDriveConfig = {
@@ -1388,6 +1402,56 @@ export async function saveAppDataFile<T = any>(
   } catch (err) {
     console.error(`[Drive appDataFolder] Lỗi ghi tệp ${filename}:`, err);
     return null;
+  }
+}
+
+export const DRIVE_FOLDER_CONFIG_FILENAME = "config_active_folder.json";
+
+export interface ActiveFolderConfig {
+  folderId: string;
+  folderName: string;
+  updatedAt: number;
+}
+
+/**
+ * Đồng bộ cấu hình thư mục Google Drive giữa các thiết bị thông qua appDataFolder
+ */
+export async function syncActiveFolderFromDrive(
+  accessToken: string
+): Promise<{ folderId: string; folderName: string } | null> {
+  if (!accessToken) return null;
+  try {
+    const res = await readAppDataFile<ActiveFolderConfig>(accessToken, DRIVE_FOLDER_CONFIG_FILENAME);
+    if (res?.data?.folderId) {
+      return {
+        folderId: res.data.folderId,
+        folderName: res.data.folderName || "[VCC] Sổ Văn Bản Điện Tử",
+      };
+    }
+  } catch (err) {
+    console.warn("[Drive appDataFolder] Lỗi đồng bộ thư mục active:", err);
+  }
+  return null;
+}
+
+/**
+ * Lưu cấu hình thư mục Google Drive đang chọn lên appDataFolder để các thiết bị khác tự đồng bộ
+ */
+export async function saveActiveFolderToDrive(
+  accessToken: string,
+  folderId: string,
+  folderName: string
+): Promise<void> {
+  if (!accessToken || !folderId) return;
+  try {
+    const data: ActiveFolderConfig = {
+      folderId,
+      folderName,
+      updatedAt: Date.now(),
+    };
+    await saveAppDataFile(accessToken, DRIVE_FOLDER_CONFIG_FILENAME, data);
+  } catch (err) {
+    console.warn("[Drive appDataFolder] Lỗi lưu cấu hình thư mục lên Drive:", err);
   }
 }
 

@@ -46,7 +46,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
         className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[calc(100dvh-64px)] sm:max-h-[95vh] print:max-h-none print:h-auto animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Modal Controls Header (Hidden in Print) */}
-        <div className="px-3.5 sm:px-6 py-3 sm:py-4 bg-slate-900 text-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-b border-slate-800 shrink-0 print:hidden">
+        <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-4 bg-slate-900 text-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-b border-slate-800 shrink-0 print:hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">

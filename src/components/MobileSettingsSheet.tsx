@@ -77,7 +77,7 @@ export const MobileSettingsSheet: React.FC<MobileSettingsSheetProps> = ({
       {/* Slide-up Sheet */}
       <div className="fixed bottom-0 inset-x-0 bg-white rounded-t-3xl shadow-2xl border-t border-slate-200 max-h-[85vh] flex flex-col z-10 animate-in slide-in-from-bottom duration-300">
         {/* Handle bar & Header */}
-        <div className="pt-3 pb-2 px-5 flex flex-col border-b border-slate-100">
+        <div className="pt-3 pb-2 pl-5 pr-14 flex flex-col border-b border-slate-100">
           <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-3" />
           <div className="flex items-center justify-between">
             <div>

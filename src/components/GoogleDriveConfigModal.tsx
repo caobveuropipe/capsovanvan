@@ -37,6 +37,7 @@ import {
   requestGoogleAccessToken,
   fetchGoogleUserProfile,
   renewGoogleDriveSession,
+  saveActiveFolderToDrive,
 } from "../services/googleDriveService";
 
 interface GoogleDriveConfigModalProps {
@@ -244,6 +245,9 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
     };
     saveGoogleDriveConfig(updated);
     setConfig(updated);
+    if (config.accessToken && folder.id) {
+      saveActiveFolderToDrive(config.accessToken, folder.id, folder.name).catch(() => {});
+    }
     if (onConfigUpdated) onConfigUpdated(updated);
     setStatusMessage({
       type: "success",
@@ -282,6 +286,9 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
     };
     saveGoogleDriveConfig(updated);
     setConfig(updated);
+    if (config.accessToken && updated.folderId) {
+      saveActiveFolderToDrive(config.accessToken, updated.folderId, updated.folderName || "").catch(() => {});
+    }
     if (onConfigUpdated) onConfigUpdated(updated);
     setStatusMessage({
       type: "success",
@@ -307,7 +314,7 @@ export const GoogleDriveConfigModal: React.FC<GoogleDriveConfigModalProps> = ({
         className="relative w-full max-w-xl bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl shadow-blue-900/20 overflow-hidden my-auto max-h-[calc(100dvh-85px)] sm:max-h-[90vh] flex flex-col"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
+        <div className="flex items-center justify-between pl-4 pr-14 sm:px-6 py-4 border-b border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-emerald-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20">
               <HardDrive className="w-5 h-5" />
