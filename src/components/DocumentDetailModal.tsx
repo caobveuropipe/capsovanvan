@@ -320,7 +320,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     >
       <div
         id="document-detail-modal-card"
-        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-6xl 2xl:max-w-7xl overflow-hidden flex flex-col h-full sm:h-auto max-h-[100dvh] sm:max-h-[94vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header */}
         <div className="pl-3.5 pr-14 sm:px-6 py-3 sm:py-3.5 bg-white text-slate-900 flex items-center justify-between border-b border-slate-200 shrink-0">

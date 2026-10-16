@@ -369,7 +369,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
   };
 
   return (
-    <div className="space-y-2.5 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5">
+    <div className="space-y-2.5 max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-2 sm:py-2.5">
       {/* Top Search & Filter Bar - Thu gọn theo Hình 2 */}
       <div className="bg-white rounded-xl p-2.5 sm:p-3 shadow-2xs border border-slate-200 space-y-2">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2">
@@ -544,7 +544,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
       ) : viewMode === "grid" ? (
         /* 1. GRID VIEW WITH IMAGE PREVIEWS */
         <div className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-5">
             {paginatedDocs.map((doc) => {
               const hasImage = doc.images && doc.images.length > 0;
               const primaryImg = hasImage ? doc.images[0] : null;
@@ -767,13 +767,22 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                         {doc.categoryName}
                       </span>
                     </td>
-                    <td className="px-3.5 py-2 font-medium text-slate-900 max-w-xs truncate">
+                    <td
+                      className="px-3.5 py-2 font-medium text-slate-900 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl 2xl:max-w-3xl truncate"
+                      title={doc.title}
+                    >
                       {doc.title}
                     </td>
-                    <td className="px-3.5 py-2 text-slate-600 truncate max-w-[150px]">
+                    <td
+                      className="px-3.5 py-2 text-slate-600 truncate max-w-[150px] lg:max-w-[220px] xl:max-w-[280px] 2xl:max-w-[340px]"
+                      title={doc.issuingAuthority}
+                    >
                       {doc.issuingAuthority}
                     </td>
-                    <td className="px-3.5 py-2 text-slate-600 truncate max-w-[120px]">
+                    <td
+                      className="px-3.5 py-2 text-slate-600 truncate max-w-[120px] lg:max-w-[160px] xl:max-w-[200px] 2xl:max-w-[240px]"
+                      title={doc.signer}
+                    >
                       {doc.signer}
                     </td>
                     <td className="px-3.5 py-2 text-slate-500 whitespace-nowrap">

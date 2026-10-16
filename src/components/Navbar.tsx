@@ -81,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 text-slate-800 sticky top-0 z-40 shadow-xs transition-colors">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      <div className="max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           {/* 1 - LỀ TRÁI: Logo + Tên, căn lề trái */}
           <div className="flex items-center gap-2.5 shrink-0">

@@ -974,7 +974,7 @@ export default function App() {
       <main className="flex-1 pb-32 md:pb-6">
         {/* Banner thông báo nhắc nhở nếu chưa kết nối hoặc chưa cấu hình folder Google Drive */}
         {!driveConfig.userEmail ? (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+          <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 pt-4 sm:pt-6">
             <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-400/30 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 transition-all hover:border-amber-400/50">
               <div className="flex items-start sm:items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 shrink-0">
@@ -1005,7 +1005,7 @@ export default function App() {
             </div>
           </div>
         ) : !driveConfig.folderId ? (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+          <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 pt-4 sm:pt-6">
             <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent border border-blue-400/30 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 transition-all hover:border-blue-400/50">
               <div className="flex items-start sm:items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-600 shrink-0">

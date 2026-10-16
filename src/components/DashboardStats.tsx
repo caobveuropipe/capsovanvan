@@ -47,7 +47,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
     .slice(0, 6);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="space-y-6 max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
       {/* Top 4 KPI Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Docs */}
