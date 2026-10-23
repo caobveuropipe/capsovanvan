@@ -12,6 +12,7 @@ import {
   Eye,
   CheckCircle2,
   Calendar,
+  Cloud,
 } from "lucide-react";
 import { DocumentCategory, DocumentRecord } from "../types";
 import { formatVietnameseDate, formatVietnameseDateTime } from "../utils/numberGenerator";
@@ -36,10 +37,12 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
   const uploadCount = documents.filter((d) => d.intakeSource === "UPLOAD").length;
   const cameraCount = documents.filter((d) => d.intakeSource === "CAMERA").length;
   const emailCount = documents.filter((d) => d.intakeSource === "EMAIL").length;
+  const driveCount = documents.filter((d) => d.intakeSource === "DRIVE").length;
 
   const uploadPct = totalDocs > 0 ? Math.round((uploadCount / totalDocs) * 100) : 0;
   const cameraPct = totalDocs > 0 ? Math.round((cameraCount / totalDocs) * 100) : 0;
   const emailPct = totalDocs > 0 ? Math.round((emailCount / totalDocs) * 100) : 0;
+  const drivePct = totalDocs > 0 ? Math.round((driveCount / totalDocs) * 100) : 0;
 
   // Recent 5 documents
   const recentDocs = [...documents]
@@ -48,8 +51,8 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
 
   return (
     <div className="space-y-6 max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
-      {/* Top 4 KPI Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Top 5 KPI Metrics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Card 1: Total Docs */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
@@ -119,6 +122,24 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
           </div>
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
             <Mail className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 5: Google Drive */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+              Kho Google Drive
+            </span>
+            <div className="text-2xl font-black font-mono text-slate-900 mt-1">
+              {driveCount}
+            </div>
+            <span className="text-[11px] text-slate-500 font-medium mt-1 block">
+              Chiếm {drivePct}% tổng lưu lượng
+            </span>
+          </div>
+          <div className="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+            <Cloud className="w-6 h-6" />
           </div>
         </div>
       </div>

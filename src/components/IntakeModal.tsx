@@ -22,6 +22,8 @@ import {
   RotateCw,
   Copy,
   Check,
+  Cloud,
+  Loader2,
 } from "lucide-react";
 import {
   DocumentCategory,
@@ -46,6 +48,13 @@ import { SearchableCombobox } from "./SearchableCombobox";
 import { getActiveGeminiKey } from "../services/aiKeyService";
 import { executeDirectGoogleOcr } from "../services/directGeminiOcr";
 import { getAppApiUrl } from "../utils/apiUrl";
+import { DriveFileSelectorModal } from "./DriveFileSelectorModal";
+import {
+  downloadDriveFileContent,
+  blobToDataURL,
+  DrivePickerFile,
+} from "../services/googleDriveService";
+import { getPdfPageCount } from "../utils/pdfGenerator";
 
 interface IntakeModalProps {
   isOpen: boolean;
@@ -117,6 +126,11 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   // Images state
   const [images, setImages] = useState<DocumentImage[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
+
+  // Google Drive Integration (Phương án A: Nút chọn tệp trong tab Tải tệp)
+  const [isDrivePickerOpen, setIsDrivePickerOpen] = useState<boolean>(false);
+  const [isDownloadingDriveFile, setIsDownloadingDriveFile] = useState<boolean>(false);
+  const [driveDownloadProgressText, setDriveDownloadProgressText] = useState<string>("");
 
   // AI OCR status & Progress Bar
   const [isOcrProcessing, setIsOcrProcessing] = useState<boolean>(false);
@@ -318,6 +332,85 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       });
     });
   };
+
+  // Xử lý nạp file được chọn từ Google Drive Picker Modal
+  const handleSelectDriveFiles = async (selectedFiles: DrivePickerFile[], token: string) => {
+    if (!selectedFiles || selectedFiles.length === 0) return;
+    setIsDownloadingDriveFile(true);
+    setDriveDownloadProgressText(`Đang tải 1/${selectedFiles.length} tệp từ Google Drive...`);
+
+    try {
+      const newLoadedImages: DocumentImage[] = [];
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        setDriveDownloadProgressText(`Đang tải ${i + 1}/${selectedFiles.length}: "${file.name}"...`);
+
+        const downloaded = await downloadDriveFileContent(token, file.id);
+        const dataUrl = downloaded.dataUrl;
+        const finalMime = downloaded.mimeType || file.mimeType || "application/pdf";
+
+        let pageCount = 1;
+        if (finalMime === "application/pdf") {
+          try {
+            pageCount = await getPdfPageCount(dataUrl);
+          } catch (e) {
+            console.warn("Không thể đếm số trang PDF:", e);
+            pageCount = 1;
+          }
+        }
+
+        const driveImg: DocumentImage = {
+          id: `img-drive-${Date.now()}-${i}`,
+          name: downloaded.name || file.name,
+          dataUrl,
+          mimeType: finalMime,
+          size: downloaded.size || file.size || 0,
+          capturedAt: new Date().toISOString(),
+          pageNumber: images.length + i + 1,
+          rotation: 0,
+          sourceDriveFileId: file.id,
+          driveAssetOwnership: "EXTERNAL_REFERENCE",
+          pageCount,
+        };
+
+        newLoadedImages.push(driveImg);
+      }
+
+      setImages((prev) => {
+        const updated = [...prev, ...newLoadedImages].map((img, idx) => ({
+          ...img,
+          pageNumber: idx + 1,
+        }));
+        if (prev.length === 0 && updated.length > 0) {
+          setSelectedImageIndex(0);
+          if (!title) {
+            setTitle(selectedFiles[0].name.replace(/\.[^/.]+$/, ""));
+          }
+        }
+        return updated;
+      });
+
+      // Cố định hiển thị ở tab UPLOAD (Phương án A)
+      setActiveSource("UPLOAD");
+
+      // Đóng modal chọn file
+      setIsDrivePickerOpen(false);
+
+      // Nếu có Gemini AI, tự động gợi ý OCR trang đầu tiên nếu chưa có tệp nào trước đó
+      if (canUseAi && images.length === 0 && newLoadedImages.length > 0) {
+        const first = newLoadedImages[0];
+        triggerOcrAnalysis(first.dataUrl, first.mimeType);
+      }
+    } catch (err: any) {
+      console.error("Lỗi khi tải tệp từ Google Drive:", err);
+      setOcrError(`Không thể tải tệp từ Google Drive: ${err?.message || "Lỗi mạng hoặc quyền truy cập"}`);
+    } finally {
+      setIsDownloadingDriveFile(false);
+      setDriveDownloadProgressText("");
+    }
+  };
+
   // Load sample test document for Upload tab
   const loadSampleDocument = (type: "QD" | "CV" | "HD" | "TTR") => {
     const now = new Date();
@@ -625,6 +718,12 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
     const verificationCode = generateVerificationCode(finalDocNumber, selectedCategory.code);
 
+    const sourceDriveFileIds = finalImages
+      .map((img) => img.sourceDriveFileId)
+      .filter(Boolean) as string[];
+
+    const totalPages = finalImages.reduce((sum, img) => sum + (img.pageCount || 1), 0);
+
     const newDoc: DocumentRecord = {
       id: `doc-${Date.now()}`,
       docNumber: finalDocNumber,
@@ -640,7 +739,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       registrationDate: nowIso,
       departmentCode: departmentCode || selectedCategory.defaultDepartment || "VP",
       status: "NUMBERED",
-      intakeSource: activeSource,
+      intakeSource: sourceDriveFileIds.length > 0 ? "DRIVE" : activeSource,
       urgency,
       secrecy,
       summary: summary.trim() || title.trim(),
@@ -650,11 +749,15 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       verificationCode,
       createdBy: "Chuyên viên Văn thư điện tử",
       notes: notes.trim(),
+      sourceDriveFileId: sourceDriveFileIds[0],
+      sourceDriveFileIds: sourceDriveFileIds.length > 0 ? sourceDriveFileIds : undefined,
+      driveAssetOwnership: sourceDriveFileIds.length > 0 ? "EXTERNAL_REFERENCE" : undefined,
+      pageCount: totalPages,
       history: [
         {
           id: `h-${Date.now()}`,
           timestamp: nowIso,
-          action: `TIẾP NHẬN (${activeSource}) & CẤP SỐ`,
+          action: `TIẾP NHẬN (${sourceDriveFileIds.length > 0 ? "DRIVE" : activeSource}) & CẤP SỐ`,
           user: "Hệ thống Cấp số Tự động",
           details: `Đã cấp số chính thức [${finalDocNumber}] theo quy tắc danh mục ${selectedCategory.name}.`,
         },
@@ -870,7 +973,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
             {/* Left Column: 3 Intake Methods + Visual Scanner (5 cols) */}
             <div className={`lg:col-span-5 bg-slate-50 border-r border-slate-200 p-3.5 sm:p-4 overflow-y-auto ${mobileStep === 1 ? "flex flex-col justify-between" : "hidden lg:flex lg:flex-col lg:justify-between"}`}>
               <div>
-                {/* 2 Intake Source Selector Tabs */}
+                {/* Intake Source Selector Tabs (Cố định 2 tabs: Tải tệp & Chụp ảnh theo Phương án A) */}
                 <div className="grid grid-cols-2 gap-1 bg-slate-200/80 p-1 rounded-xl mb-3 sm:mb-4 border border-slate-300/60">
                   <button
                     id="tab-intake-upload"
@@ -938,6 +1041,22 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                       />
                     </label>
 
+                    {/* Phương án A: Nút Chọn tệp văn bản từ Google Drive tích hợp trực tiếp trong tab Tải tệp */}
+                    <button
+                      type="button"
+                      id="btn-intake-pick-google-drive-inline"
+                      onClick={() => setIsDrivePickerOpen(true)}
+                      disabled={isDownloadingDriveFile}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50/60 hover:from-blue-100 hover:to-indigo-100 text-blue-700 font-bold text-xs transition-all shadow-2xs cursor-pointer group disabled:opacity-50"
+                    >
+                      {isDownloadingDriveFile ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                      ) : (
+                        <Cloud className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />
+                      )}
+                      <span>{isDownloadingDriveFile ? driveDownloadProgressText : "Chọn tệp văn bản từ Google Drive"}</span>
+                    </button>
+
                     {/* Attached files list & page count (No preview image) */}
                     {images.length > 0 && (
                       <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
@@ -975,12 +1094,17 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                                     <span className="font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-[10px] shrink-0">
                                       Trang {idx + 1}
                                     </span>
+                                    {img.sourceDriveFileId && (
+                                      <span className="font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-0.2 text-[9px] rounded shrink-0 flex items-center gap-0.5">
+                                        <Cloud className="w-2.5 h-2.5" /> Drive
+                                      </span>
+                                    )}
                                     <span className="font-medium text-slate-800 truncate text-[11px]" title={img.name}>
                                       {img.name}
                                     </span>
                                   </div>
                                   <div className="text-[10px] text-slate-400 mt-0.5">
-                                    {(img.size / 1024).toFixed(1)} KB {img.rotation ? `• Đã xoay ${img.rotation}°` : ""}
+                                    {(img.size / 1024).toFixed(1)} KB {img.pageCount ? `• ${img.pageCount} trang` : ""} {img.rotation ? `• Đã xoay ${img.rotation}°` : ""}
                                   </div>
                                 </div>
                               </div>
@@ -1472,6 +1596,14 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Google Drive Picker Modal */}
+      <DriveFileSelectorModal
+        isOpen={isDrivePickerOpen}
+        onClose={() => setIsDrivePickerOpen(false)}
+        onSelectFiles={handleSelectDriveFiles}
+        allowMultiple={true}
+      />
     </div>
   );
 };

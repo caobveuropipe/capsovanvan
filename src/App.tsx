@@ -274,17 +274,30 @@ export default function App() {
         }
       }
 
-      // Quét dọn dẹp các asset file còn tồn đọng (assetCleaned === false)
-      const pendingTombstones = getTombstones().filter((t) => !t.assetCleaned && t.driveFileId);
+      // Quét dọn dẹp các asset file do hệ thống quản lý còn tồn đọng (assetCleaned === false)
+      const pendingTombstones = getTombstones().filter(
+        (t) => !t.assetCleaned && (t.driveFileId || (t.driveFileIds && t.driveFileIds.length > 0))
+      );
       for (const pt of pendingTombstones) {
-        if (pt.driveFileId) {
-          deleteFileFromGoogleDrive(currentConfig.accessToken, pt.driveFileId, currentConfig.folderId)
-            .then((cleaned) => {
-              if (cleaned) updateTombstone(pt.id, { assetCleaned: true });
-            })
-            .catch((err: any) => {
-              if (err?.status === 404) updateTombstone(pt.id, { assetCleaned: true });
-            });
+        const idsToClean =
+          pt.driveFileIds && pt.driveFileIds.length > 0
+            ? pt.driveFileIds
+            : pt.driveFileId
+            ? [pt.driveFileId]
+            : [];
+
+        if (idsToClean.length > 0) {
+          Promise.all(
+            idsToClean.map((fId) =>
+              deleteFileFromGoogleDrive(currentConfig.accessToken, fId, currentConfig.folderId).catch(
+                (err: any) => (err?.status === 404 ? true : false)
+              )
+            )
+          ).then((results) => {
+            if (results.every(Boolean)) {
+              updateTombstone(pt.id, { assetCleaned: true });
+            }
+          });
         }
       }
     } catch (syncErr: any) {
@@ -580,7 +593,18 @@ export default function App() {
   const handleDocumentCreated = async (newDoc: DocumentRecord) => {
     let docToSave = { ...newDoc };
 
-    // Phương án B: Tự động ghép toàn bộ các trang ảnh (JPG/PNG/WEBP/Scan) thành 1 tệp PDF duy nhất
+    // Thu thập danh sách ID tệp gốc từ Google Drive (nếu có) để bảo toàn provenance
+    const sourceDriveIds = (docToSave.images || [])
+      .map((img) => img.sourceDriveFileId)
+      .filter(Boolean) as string[];
+    if (sourceDriveIds.length > 0) {
+      docToSave.sourceDriveFileIds = sourceDriveIds;
+      if (!docToSave.sourceDriveFileId) {
+        docToSave.sourceDriveFileId = sourceDriveIds[0];
+      }
+    }
+
+    // Tự động ghép các trang ảnh scan thành 1 tệp PDF duy nhất
     const hasRawImages = docToSave.images?.some(
       (img) =>
         !img.mimeType?.includes("pdf") &&
@@ -605,6 +629,9 @@ export default function App() {
             size: compiled.size,
             capturedAt: new Date().toISOString(),
             pageNumber: 1,
+            pageCount: compiled.pageCount,
+            sourceDriveFileId: sourceDriveIds[0],
+            driveAssetOwnership: "MANAGED",
           },
         ];
 
@@ -615,8 +642,12 @@ export default function App() {
           user: "Hệ thống Cấp số",
           details: `Đã tự động ghép ${rawCount} trang ảnh scan thành 1 tệp PDF duy nhất [${pdfFileName}]`,
         });
-      } catch (compileErr) {
+      } catch (compileErr: any) {
         console.warn("Không thể ghép ảnh thành PDF, giữ nguyên ảnh gốc:", compileErr);
+        showToast(
+          `Lưu ý: Không thể ghép tệp thành PDF (${compileErr?.message || "Lỗi định dạng"}). Hệ thống giữ nguyên các tệp đính kèm gốc.`,
+          "info"
+        );
       }
     }
 
@@ -673,12 +704,14 @@ export default function App() {
             curImg.driveFileId = driveResult.id;
             curImg.driveWebViewLink = driveResult.webViewLink;
             curImg.driveThumbnailLink = driveResult.thumbnailLink;
+            curImg.driveAssetOwnership = "MANAGED";
 
             if (i === 0) {
               primaryResult = driveResult;
               docToSave.driveFileId = driveResult.id;
               docToSave.driveWebViewLink = driveResult.webViewLink;
               docToSave.driveThumbnailLink = driveResult.thumbnailLink;
+              docToSave.driveAssetOwnership = "MANAGED";
             }
           }
 
@@ -732,14 +765,31 @@ export default function App() {
       const docToDelete = await getDocumentById(id);
       const currentDriveConfig = getGoogleDriveConfig();
 
+      // Thu thập danh sách các file ID do hệ thống quản lý (MANAGED) cần dọn dẹp khi xóa văn bản
+      // EFR-01: Tuyệt đối KHÔNG xóa các file có quyền sở hữu EXTERNAL_REFERENCE của người dùng
+      const managedAssetIds: string[] = [];
+      if (docToDelete?.driveFileId && docToDelete.driveAssetOwnership !== "EXTERNAL_REFERENCE") {
+        managedAssetIds.push(docToDelete.driveFileId);
+      }
+      if (docToDelete?.images) {
+        for (const img of docToDelete.images) {
+          if (img.sourceDriveFileId && img.driveAssetOwnership === "MANAGED") {
+            if (!managedAssetIds.includes(img.sourceDriveFileId)) {
+              managedAssetIds.push(img.sourceDriveFileId);
+            }
+          }
+        }
+      }
+
       // 1. Tạo Tombstone ngay lập tức với snapshot đầy đủ (registrySynced: false, assetCleaned: false)
       addTombstone({
         id,
         docNumber: docToDelete?.docNumber,
-        driveFileId: docToDelete?.driveFileId,
+        driveFileId: managedAssetIds[0],
+        driveFileIds: managedAssetIds,
         deletedAt: Date.now(),
         registrySynced: false,
-        assetCleaned: !docToDelete?.driveFileId,
+        assetCleaned: managedAssetIds.length === 0,
       });
 
       // 2. Xóa khỏi cơ sở dữ liệu nội bộ IndexedDB & cân chỉnh categories
@@ -788,22 +838,28 @@ export default function App() {
         }
       }
 
-      // 4. Xóa file asset trên Google Drive (nếu có)
-      if (docToDelete?.driveFileId && currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
-        try {
-          const isCleaned = await deleteFileFromGoogleDrive(
-            currentDriveConfig.accessToken,
-            docToDelete.driveFileId,
-            currentDriveConfig.folderId
-          );
-          if (isCleaned) {
-            updateTombstone(id, { assetCleaned: true });
+      // 4. Xóa các file asset MANAGED trên Google Drive (nếu có)
+      if (managedAssetIds.length > 0 && currentDriveConfig.accessToken && !isDriveTokenExpired(currentDriveConfig)) {
+        let allCleaned = true;
+        for (const fileId of managedAssetIds) {
+          try {
+            const isCleaned = await deleteFileFromGoogleDrive(
+              currentDriveConfig.accessToken,
+              fileId,
+              currentDriveConfig.folderId
+            );
+            if (!isCleaned) {
+              allCleaned = false;
+            }
+          } catch (delErr: any) {
+            console.warn(`Tệp ${fileId} trên Google Drive không còn tồn tại hoặc lỗi mạng:`, delErr);
+            if (delErr?.status !== 404) {
+              allCleaned = false;
+            }
           }
-        } catch (delErr: any) {
-          console.warn("Tệp trên Google Drive không còn tồn tại hoặc lỗi mạng:", delErr);
-          if (delErr?.status === 404) {
-            updateTombstone(id, { assetCleaned: true });
-          }
+        }
+        if (allCleaned) {
+          updateTombstone(id, { assetCleaned: true });
         }
       }
 

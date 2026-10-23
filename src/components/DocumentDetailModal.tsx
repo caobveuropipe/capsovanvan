@@ -140,8 +140,19 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
       imgName.endsWith(".webp"))
   );
 
-  const activeDriveLink = currentImage?.driveWebViewLink || doc?.driveWebViewLink;
-  const targetDriveId = currentImage?.driveFileId || (activeImageIndex === 0 ? doc?.driveFileId : undefined);
+  const activeDriveLink =
+    currentImage?.driveWebViewLink ||
+    doc?.driveWebViewLink ||
+    (currentImage?.sourceDriveFileId
+      ? `https://drive.google.com/file/d/${currentImage.sourceDriveFileId}/view`
+      : doc?.sourceDriveFileId
+      ? `https://drive.google.com/file/d/${doc.sourceDriveFileId}/view`
+      : undefined);
+
+  const targetDriveId =
+    currentImage?.driveFileId ||
+    currentImage?.sourceDriveFileId ||
+    (activeImageIndex === 0 ? doc?.driveFileId || doc?.sourceDriveFileId : undefined);
 
   // Chuẩn hóa Blob URL cho PDF để tránh trình duyệt Chromium chặn data:application/pdf trong iframe
   const pdfBlobUrl = useMemo(() => {

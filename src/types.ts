@@ -17,8 +17,9 @@ export interface DocumentCategory {
 
 export type UrgencyLevel = "THUONG" | "KHAN" | "THUONG_KHAN" | "HOA_TOC";
 export type SecrecyLevel = "THUONG" | "MAT" | "TOI_MAT" | "TUYET_MAT";
-export type IntakeSource = "UPLOAD" | "CAMERA" | "EMAIL" | "MANUAL";
+export type IntakeSource = "UPLOAD" | "CAMERA" | "EMAIL" | "MANUAL" | "DRIVE";
 export type DocumentStatus = "DRAFT" | "NUMBERED" | "DISPATCHED" | "ARCHIVED" | "CANCELLED";
+export type DriveAssetOwnership = "EXTERNAL_REFERENCE" | "MANAGED";
 
 export interface DocumentImage {
   id: string;
@@ -32,6 +33,9 @@ export interface DocumentImage {
   driveFileId?: string;
   driveWebViewLink?: string;
   driveThumbnailLink?: string;
+  sourceDriveFileId?: string;
+  driveAssetOwnership?: DriveAssetOwnership;
+  pageCount?: number;
 }
 
 export interface EmailAttachment {
@@ -87,6 +91,10 @@ export interface DocumentRecord {
   driveFileId?: string;
   driveWebViewLink?: string;
   driveThumbnailLink?: string;
+  sourceDriveFileId?: string;
+  sourceDriveFileIds?: string[];
+  driveAssetOwnership?: DriveAssetOwnership;
+  pageCount?: number;
   verificationCode: string;
   createdBy: string;
   notes: string;

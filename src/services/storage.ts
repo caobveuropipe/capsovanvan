@@ -543,6 +543,7 @@ export interface TombstoneRecord {
   id: string;
   docNumber?: string;
   driveFileId?: string;
+  driveFileIds?: string[];
   deletedAt: number;
   registrySynced: boolean;
   assetCleaned: boolean;

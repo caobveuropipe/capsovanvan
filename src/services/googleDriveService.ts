@@ -1068,7 +1068,10 @@ function sanitizeDatabasePayload(payload: DriveDatabasePayload): DriveDatabasePa
       driveFileId: img.driveFileId,
       driveWebViewLink: img.driveWebViewLink,
       driveThumbnailLink: img.driveThumbnailLink,
-      // Do NOT include img.dataUrl here (already uploaded as a separate file on Drive)
+      sourceDriveFileId: img.sourceDriveFileId,
+      driveAssetOwnership: img.driveAssetOwnership,
+      pageCount: img.pageCount,
+      // Do NOT include img.dataUrl here (already uploaded as a separate file on Drive or referenced from Drive)
     }));
 
     // If doc has email attachments, also strip attachment dataUrl
@@ -1454,5 +1457,228 @@ export async function saveActiveFolderToDrive(
     console.warn("[Drive appDataFolder] Lỗi lưu cấu hình thư mục lên Drive:", err);
   }
 }
+
+// Convert Blob to Base64 Data URL safely
+export function blobToDataURL(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(blob);
+  });
+}
+
+export interface DrivePickerFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+  modifiedTime?: string;
+  thumbnailLink?: string;
+  webViewLink?: string;
+  iconLink?: string;
+  isFolder: boolean;
+}
+
+export interface ListDriveFilesOptions {
+  query?: string;
+  folderId?: string;
+  pageSize?: number;
+  pageToken?: string;
+  includeFolders?: boolean;
+  sharedWithMe?: boolean;
+  recentOnly?: boolean;
+}
+
+export interface ListDriveFilesResult {
+  files: DrivePickerFile[];
+  nextPageToken?: string;
+}
+
+/**
+ * Trích xuất Folder ID từ URL liên kết Google Drive hoặc ID thô
+ */
+export function extractDriveFolderIdFromInput(input: string): string {
+  const trimmed = input.trim();
+  const folderUrlMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderUrlMatch) return folderUrlMatch[1];
+  const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParamMatch) return idParamMatch[1];
+  return trimmed;
+}
+
+
+/**
+ * Liệt kê các tệp tài liệu (PDF, ảnh) và thư mục từ Google Drive phục vụ tiếp nhận văn bản.
+ * Đã áp dụng bộ lọc chuẩn MIME type, thoát ký tự đặc biệt trong truy vấn và kiểm tra quyền truy cập.
+ */
+export async function listDocumentFilesFromDrive(
+  accessToken: string,
+  options: ListDriveFilesOptions = {}
+): Promise<ListDriveFilesResult> {
+  if (!accessToken) {
+    throw new Error("Chưa có Access Token Google Drive.");
+  }
+
+  const {
+    query = "",
+    folderId,
+    pageSize = 40,
+    pageToken,
+    includeFolders = true,
+    sharedWithMe = false,
+    recentOnly = false,
+  } = options;
+
+  // Xây dựng điều kiện lọc an toàn
+  const conditions: string[] = ["trashed = false"];
+
+  // Bộ lọc MIME type: chỉ nhận PDF, Ảnh, hoặc Thư mục con
+  if (includeFolders) {
+    conditions.push(
+      "(mimeType = 'application/vnd.google-apps.folder' or mimeType = 'application/pdf' or mimeType contains 'image/')"
+    );
+  } else {
+    conditions.push("(mimeType = 'application/pdf' or mimeType contains 'image/')");
+  }
+
+  // Phân vùng duyệt thư mục:
+  if (sharedWithMe) {
+    conditions.push("sharedWithMe = true");
+  } else if (!recentOnly) {
+    if (folderId) {
+      const safeParent = folderId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      conditions.push(`'${safeParent}' in parents`);
+    }
+  }
+
+  // Tìm kiếm theo tên file (chuẩn hóa và escape ký tự nháy đơn)
+  if (query.trim()) {
+    const safeQuery = query.trim().replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    conditions.push(`name contains '${safeQuery}'`);
+  }
+
+  const q = conditions.join(" and ");
+
+  const url = new URL("https://www.googleapis.com/drive/v3/files");
+  url.searchParams.set("q", q);
+  url.searchParams.set(
+    "fields",
+    "nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink, webViewLink, iconLink, parents)"
+  );
+  url.searchParams.set("pageSize", String(Math.min(pageSize, 100)));
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("includeItemsFromAllDrives", "true");
+  url.searchParams.set("orderBy", "folder desc, modifiedTime desc");
+
+  if (pageToken) {
+    url.searchParams.set("pageToken", pageToken);
+  }
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      const err: any = new Error("Phiên làm việc Google Drive đã hết hạn (401 Unauthorized).");
+      err.status = 401;
+      throw err;
+    }
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Lỗi tải danh sách tệp Google Drive (${response.status})`);
+  }
+
+  const data = await response.json();
+  const rawFiles: any[] = data.files || [];
+
+  const files: DrivePickerFile[] = rawFiles.map((f) => ({
+    id: f.id,
+    name: f.name || "Tệp không tên",
+    mimeType: f.mimeType || "application/octet-stream",
+    size: f.size ? Number(f.size) : undefined,
+    modifiedTime: f.modifiedTime,
+    thumbnailLink: f.thumbnailLink,
+    webViewLink: f.webViewLink,
+    iconLink: f.iconLink,
+    isFolder: f.mimeType === "application/vnd.google-apps.folder",
+  }));
+
+  return {
+    files,
+    nextPageToken: data.nextPageToken,
+  };
+}
+
+/**
+ * Tải nội dung nhị phân của tệp từ Google Drive về client dưới dạng Base64 Data URL.
+ */
+export async function downloadDriveFileContent(
+  accessToken: string,
+  fileId: string,
+  knownMimeType?: string
+): Promise<{ dataUrl: string; size: number; mimeType: string; name?: string }> {
+  if (!accessToken) {
+    throw new Error("Chưa có Access Token Google Drive.");
+  }
+
+  // 1. Tải metadata của tệp trước để lấy thông tin MIME và tên nếu chưa rõ
+  let finalMimeType = knownMimeType || "application/pdf";
+  let fileName = "";
+
+  try {
+    const metaRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size&supportsAllDrives=true`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      if (meta.mimeType) finalMimeType = meta.mimeType;
+      if (meta.name) fileName = meta.name;
+    }
+  } catch (metaErr) {
+    console.debug("Không thể đọc metadata trước khi tải media:", metaErr);
+  }
+
+  // 2. Chặn các loại tệp Google Workspace thuần (Docs, Sheets, Slides)
+  if (finalMimeType.startsWith("application/vnd.google-apps.")) {
+    throw new Error(
+      "Tệp Google Docs/Sheets thuần túy không hỗ trợ tải trực tiếp dưới dạng nhị phân. Vui lòng xuất tệp ra PDF trên Google Drive trước khi tiếp nhận."
+    );
+  }
+
+  // 3. Tải nội dung nhị phân qua alt=media
+  const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+  const response = await fetch(downloadUrl, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      const err: any = new Error("Phiên làm việc Google Drive đã hết hạn (401 Unauthorized).");
+      err.status = 401;
+      throw err;
+    }
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Lỗi tải nội dung tệp từ Google Drive (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const dataUrl = await blobToDataURL(blob);
+
+  return {
+    dataUrl,
+    size: blob.size,
+    mimeType: finalMimeType || blob.type || "application/pdf",
+    name: fileName,
+  };
+}
+
 
 

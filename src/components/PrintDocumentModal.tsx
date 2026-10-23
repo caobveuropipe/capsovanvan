@@ -241,6 +241,8 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                         ? "Quét trực tiếp qua Camera ứng dụng"
                         : doc.intakeSource === "EMAIL"
                         ? "Tự động tiếp nhận từ Thư điện tử (Email Gateway)"
+                        : doc.intakeSource === "DRIVE"
+                        ? "Tiếp nhận trực tiếp từ Google Drive"
                         : "Nhập thủ công"}
                     </div>
                   </div>

@@ -33,6 +33,7 @@ import {
   Loader2,
   AlertCircle,
   Shield,
+  Cloud,
 } from "lucide-react";
 import { DocumentCategory, DocumentRecord, IntakeSource } from "../types";
 import { formatVietnameseDate, formatVietnameseDateTime } from "../utils/numberGenerator";
@@ -197,6 +198,8 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
         return <Camera className="w-3 h-3 text-emerald-500" />;
       case "EMAIL":
         return <Mail className="w-3 h-3 text-indigo-500" />;
+      case "DRIVE":
+        return <Cloud className="w-3 h-3 text-sky-500" />;
       default:
         return <FileText className="w-3 h-3 text-slate-500" />;
     }
@@ -210,6 +213,8 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
         return "Chụp ảnh";
       case "EMAIL":
         return "Email";
+      case "DRIVE":
+        return "Google Drive";
       default:
         return "Thủ công";
     }
@@ -502,7 +507,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
           {/* Source Tabs */}
           <div className="flex items-center gap-1 shrink-0">
             <span className="text-[11px] text-slate-400 font-medium mr-0.5">Nguồn:</span>
-            {(["ALL", "UPLOAD", "CAMERA", "EMAIL"] as const).map((src) => (
+            {(["ALL", "UPLOAD", "CAMERA", "EMAIL", "DRIVE"] as const).map((src) => (
               <button
                 key={src}
                 onClick={() => setSelectedSourceFilter(src)}
