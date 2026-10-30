@@ -673,10 +673,30 @@ export interface FormMetadataOptions {
 export type FormMetadataField = keyof FormMetadataOptions;
 
 export const DEFAULT_FORM_METADATA_OPTIONS: FormMetadataOptions = {
-  issuingAuthorities: [],
-  signers: [],
-  recipients: [],
-  departments: [],
+  issuingAuthorities: [
+    "Công ty Cổ phần VCCORP",
+    "Khối Admicro - Công ty Cổ phần VCCORP",
+    "Ban Quản trị / HĐQT",
+    "Văn phòng Tổng Giám đốc",
+    "Ủy ban Nhân dân",
+  ],
+  signers: [
+    "Nguyễn Văn An - Tổng Giám đốc",
+    "Phan Đặng Trà My - Phó Tổng Giám đốc",
+    "Nguyễn Đăng Ngọc - Phó Tổng Giám đốc",
+    "Trần Thị B - Trưởng phòng Hành chính",
+    "Lê Văn C - Phó Tổng Giám đốc",
+  ],
+  recipients: [
+    "Ban Giám đốc, Các Phòng ban liên quan",
+    "Ban Giám đốc",
+    "Các Phòng ban liên quan",
+    "Lưu: VT, TCKT",
+    "Phòng Kế toán - Tài chính",
+    "Phòng Hành chính - Nhân sự",
+    "Khối Kinh doanh Admicro",
+  ],
+  departments: ["VP", "TCKT", "HCNS", "KD", "IT", "BGD"],
 };
 
 const LOCAL_STORAGE_METADATA_OPTIONS_KEY = "doc_form_metadata_options_v1";
@@ -689,18 +709,22 @@ export function getFormMetadataOptions(): FormMetadataOptions {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_METADATA_OPTIONS_KEY);
     const initial: FormMetadataOptions = {
-      issuingAuthorities: Array.isArray(initialMetadataOptions?.issuingAuthorities)
-        ? initialMetadataOptions.issuingAuthorities
-        : [],
-      signers: Array.isArray(initialMetadataOptions?.signers)
-        ? initialMetadataOptions.signers
-        : [],
-      recipients: Array.isArray(initialMetadataOptions?.recipients)
-        ? initialMetadataOptions.recipients
-        : [],
-      departments: Array.isArray(initialMetadataOptions?.departments)
-        ? initialMetadataOptions.departments
-        : [],
+      issuingAuthorities: Array.from(new Set([
+        ...DEFAULT_FORM_METADATA_OPTIONS.issuingAuthorities,
+        ...(Array.isArray(initialMetadataOptions?.issuingAuthorities) ? initialMetadataOptions.issuingAuthorities : []),
+      ])),
+      signers: Array.from(new Set([
+        ...DEFAULT_FORM_METADATA_OPTIONS.signers,
+        ...(Array.isArray(initialMetadataOptions?.signers) ? initialMetadataOptions.signers : []),
+      ])),
+      recipients: Array.from(new Set([
+        ...DEFAULT_FORM_METADATA_OPTIONS.recipients,
+        ...(Array.isArray(initialMetadataOptions?.recipients) ? initialMetadataOptions.recipients : []),
+      ])),
+      departments: Array.from(new Set([
+        ...DEFAULT_FORM_METADATA_OPTIONS.departments,
+        ...(Array.isArray(initialMetadataOptions?.departments) ? initialMetadataOptions.departments : []),
+      ])),
     };
 
     if (!raw) {

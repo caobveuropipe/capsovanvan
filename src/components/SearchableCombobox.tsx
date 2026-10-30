@@ -49,6 +49,8 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
     if (optLower.includes(trimmedFilter)) return true;
     if (trimmedFilter.includes(",") || trimmedFilter.includes(";")) {
       const parts = trimmedFilter.split(/[,;]+/).map((p) => p.trim()).filter(Boolean);
+      const lastPart = parts[parts.length - 1] || "";
+      if (lastPart && optLower.includes(lastPart)) return true;
       return parts.some((p) => optLower.includes(p) || p.includes(optLower));
     }
     return false;
@@ -110,7 +112,14 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
   };
 
   const handleSelectOption = (opt: string) => {
-    onChange(opt);
+    if (value && (value.includes(",") || value.includes(";"))) {
+      const lastDelimiterIdx = Math.max(value.lastIndexOf(","), value.lastIndexOf(";"));
+      const prefix = value.substring(0, lastDelimiterIdx + 1).trim();
+      const combined = `${prefix} ${opt}`.trim();
+      onChange(combined);
+    } else {
+      onChange(opt);
+    }
     setIsOpen(false);
     inputRef.current?.focus();
   };
