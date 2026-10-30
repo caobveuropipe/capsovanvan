@@ -292,7 +292,14 @@ Nhiệm vụ của bạn là:
       : ["categoryCode", "categoryName", "title", "ocrFullText", "summary"];
 
     // Danh sách các model ứng viên theo thứ tự ưu tiên: 3.5-flash -> 3.7-flash -> 3.8-flash -> flash-latest
-    const candidateModels = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest"];
+    const candidateModels = [
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
+      "gemini-3.8-flash",
+      "gemini-3.5-flash",
+      "gemini-flash-latest",
+    ];
     const modelConfig = {
       contents: { parts: contents },
       config: {

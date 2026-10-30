@@ -743,16 +743,29 @@ export function saveFormMetadataOptions(options: FormMetadataOptions): void {
 }
 
 /**
- * Thêm một giá trị mới vào nhóm chỉ định (nếu chưa có)
+ * Thêm một giá trị mới vào nhóm chỉ định (nếu chưa có).
+ * Hỗ trợ tự động tách nhiều mục nếu chuỗi chứa dấu phẩy hoặc chấm phẩy.
  */
 export function addFormMetadataOption(field: FormMetadataField, value: string): FormMetadataOptions {
   const current = getFormMetadataOptions();
   const trimmed = value.trim();
   if (!trimmed) return current;
 
-  const exists = current[field].some((item) => item.toLowerCase() === trimmed.toLowerCase());
-  if (!exists) {
-    current[field].push(trimmed);
+  let hasChange = false;
+  // Tự động phân tách nếu chuỗi có nhiều mục ngăn cách bởi dấu phẩy hoặc chấm phẩy
+  const items = trimmed.includes(",") || trimmed.includes(";")
+    ? trimmed.split(/[,;]+/).map((s) => s.trim()).filter(Boolean)
+    : [trimmed];
+
+  for (const item of items) {
+    const exists = current[field].some((existing) => existing.toLowerCase() === item.toLowerCase());
+    if (!exists) {
+      current[field].push(item);
+      hasChange = true;
+    }
+  }
+
+  if (hasChange) {
     saveFormMetadataOptions(current);
   }
   return current;
@@ -844,5 +857,50 @@ export function reconcileAndSaveRemoteMetadataOptions(
   }
   return merged;
 }
+
+// ==========================================
+// FORM DRAFT PERSISTENCE (Ghi nhớ giá trị form gần nhất, chống mất khi F5)
+// ==========================================
+
+const LOCAL_STORAGE_FORM_DRAFT_KEY = "doc_intake_form_last_draft_v1";
+
+export interface IntakeFormDraft {
+  issuingAuthority: string;
+  signer: string;
+  recipient: string;
+  departmentCode: string;
+}
+
+export const DEFAULT_FORM_DRAFT: IntakeFormDraft = {
+  issuingAuthority: "Công ty Cổ phần VCCORP",
+  signer: "Nguyễn Văn An - Tổng Giám đốc",
+  recipient: "Ban Giám đốc, Các Phòng ban liên quan",
+  departmentCode: "VP",
+};
+
+export function getLastFormDraft(): IntakeFormDraft {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_FORM_DRAFT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        issuingAuthority: parsed.issuingAuthority || DEFAULT_FORM_DRAFT.issuingAuthority,
+        signer: parsed.signer || DEFAULT_FORM_DRAFT.signer,
+        recipient: parsed.recipient || DEFAULT_FORM_DRAFT.recipient,
+        departmentCode: parsed.departmentCode || DEFAULT_FORM_DRAFT.departmentCode,
+      };
+    }
+  } catch (_) {}
+  return DEFAULT_FORM_DRAFT;
+}
+
+export function saveLastFormDraft(draft: Partial<IntakeFormDraft>): void {
+  try {
+    const current = getLastFormDraft();
+    const updated = { ...current, ...draft };
+    localStorage.setItem(LOCAL_STORAGE_FORM_DRAFT_KEY, JSON.stringify(updated));
+  } catch (_) {}
+}
+
 
 

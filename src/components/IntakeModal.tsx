@@ -43,6 +43,8 @@ import {
   getFormMetadataOptions,
   addFormMetadataOption,
   autoRecordDocumentMetadataOptions,
+  getLastFormDraft,
+  saveLastFormDraft,
   FormMetadataOptions,
   FormMetadataField,
 } from "../services/storage";
@@ -55,8 +57,12 @@ import {
   downloadDriveFileContent,
   blobToDataURL,
   DrivePickerFile,
+  getGoogleDriveConfig,
+  isDriveTokenExpired,
+  saveDatabaseWithConflictResolution,
 } from "../services/googleDriveService";
 import { getPdfPageCount } from "../utils/pdfGenerator";
+import { optimizeImageForOcr } from "../utils/imageOptimizer";
 
 interface IntakeModalProps {
   isOpen: boolean;
@@ -94,15 +100,16 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     categories[0]?.id || ""
   );
 
-  // Form Fields
+  // Form Fields (Khởi tạo từ draft gần nhất để chống mất dữ liệu khi F5 hoặc mở lại)
+  const [initialDraft] = useState(() => getLastFormDraft());
   const [title, setTitle] = useState<string>("");
-  const [issuingAuthority, setIssuingAuthority] = useState<string>("Công ty Cổ phần VCCORP");
-  const [recipient, setRecipient] = useState<string>("Ban Giám đốc, Các Phòng ban liên quan");
-  const [signer, setSigner] = useState<string>("Nguyễn Văn An - Tổng Giám đốc");
+  const [issuingAuthority, setIssuingAuthority] = useState<string>(initialDraft.issuingAuthority);
+  const [recipient, setRecipient] = useState<string>(initialDraft.recipient);
+  const [signer, setSigner] = useState<string>(initialDraft.signer);
   const [documentDate, setDocumentDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
-  const [departmentCode, setDepartmentCode] = useState<string>("VP");
+  const [departmentCode, setDepartmentCode] = useState<string>(initialDraft.departmentCode);
   const [urgency, setUrgency] = useState<UrgencyLevel>("THUONG");
   const [secrecy, setSecrecy] = useState<SecrecyLevel>("THUONG");
   const [summary, setSummary] = useState<string>("");
@@ -117,12 +124,49 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFormOptions(getFormMetadataOptions());
+      const d = getLastFormDraft();
+      if (!signer) setSigner(d.signer);
+      if (!issuingAuthority) setIssuingAuthority(d.issuingAuthority);
+      if (!recipient) setRecipient(d.recipient);
+      if (!departmentCode) setDepartmentCode(d.departmentCode);
     }
   }, [isOpen]);
 
   const handleAddNewOption = (field: FormMetadataField, value: string) => {
     const updated = addFormMetadataOption(field, value);
     setFormOptions({ ...updated });
+
+    // Ghi nhớ giá trị draft ngay lập tức để không bao giờ bị mất khi F5
+    if (field === "signers") {
+      setSigner(value);
+      saveLastFormDraft({ signer: value });
+    }
+    if (field === "issuingAuthorities") {
+      setIssuingAuthority(value);
+      saveLastFormDraft({ issuingAuthority: value });
+    }
+    if (field === "recipients") {
+      setRecipient(value);
+      saveLastFormDraft({ recipient: value });
+    }
+    if (field === "departments") {
+      setDepartmentCode(value);
+      saveLastFormDraft({ departmentCode: value });
+    }
+
+    // Đẩy ngay lên Google Drive trong nền nếu đang kết nối Drive
+    const driveCfg = getGoogleDriveConfig();
+    if (driveCfg.accessToken && !isDriveTokenExpired(driveCfg)) {
+      saveDatabaseWithConflictResolution(driveCfg.accessToken, driveCfg.folderId, (current) => {
+        if (!current) return current as any;
+        return {
+          ...current,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: driveCfg.userEmail,
+          formMetadataOptions: updated,
+        };
+      }).catch((err) => console.warn("Lỗi sync metadata lên Drive:", err));
+    }
   };
 
   // Images state
@@ -533,14 +577,24 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
         );
       }
 
+      // 0. Tối ưu hóa dung lượng & cắt cúp thông minh ảnh trước khi gửi AI
+      let imageToSend = imageBase64;
+      let mimeToSend = mimeType || "image/jpeg";
+      if (imageToSend && imageToSend.startsWith("data:image/")) {
+        setOcrProgressStage("Đang nén & tối ưu hóa ảnh trước khi gửi AI...");
+        const opt = await optimizeImageForOcr(imageToSend, activeMode);
+        imageToSend = opt.dataUrl;
+        mimeToSend = opt.mimeType;
+      }
+
       const payload: any = {
         categories: categories.map((c) => ({ code: c.code, name: c.name })),
         mode: activeMode,
       };
 
-      if (imageBase64) {
-        payload.imageBase64 = imageBase64;
-        payload.mimeType = mimeType || "image/jpeg";
+      if (imageToSend) {
+        payload.imageBase64 = imageToSend;
+        payload.mimeType = mimeToSend;
       }
 
       if (textContent) {
@@ -566,8 +620,8 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
           console.warn(`[OCR] Backend proxy trả về ${res.status}, chuyển sang gọi trực tiếp Google AI...`);
           d = await executeDirectGoogleOcr({
             apiKey,
-            imageBase64,
-            mimeType,
+            imageBase64: imageToSend,
+            mimeType: mimeToSend,
             textHint: textContent,
             categories: categories.map((c) => ({ code: c.code, name: c.name })),
             mode: activeMode,
@@ -580,8 +634,8 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
           console.warn("[OCR] Thử fallback gọi trực tiếp Google AI do:", backendErr?.message);
           d = await executeDirectGoogleOcr({
             apiKey,
-            imageBase64,
-            mimeType,
+            imageBase64: imageToSend,
+            mimeType: mimeToSend,
             textHint: textContent,
             categories: categories.map((c) => ({ code: c.code, name: c.name })),
             mode: activeMode,
@@ -1508,7 +1562,10 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                     <SearchableCombobox
                       label="Cơ quan / Đơn vị ban hành"
                       value={issuingAuthority}
-                      onChange={setIssuingAuthority}
+                      onChange={(val) => {
+                        setIssuingAuthority(val);
+                        saveLastFormDraft({ issuingAuthority: val });
+                      }}
                       options={formOptions.issuingAuthorities}
                       placeholder="Chọn hoặc nhập tên đơn vị..."
                       modalTitle="Thêm Cơ quan / Đơn vị ban hành"
@@ -1520,7 +1577,10 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                     <SearchableCombobox
                       label="Người ký & Chức vụ"
                       value={signer}
-                      onChange={setSigner}
+                      onChange={(val) => {
+                        setSigner(val);
+                        saveLastFormDraft({ signer: val });
+                      }}
                       options={formOptions.signers}
                       placeholder="Chọn hoặc nhập người ký & chức vụ..."
                       modalTitle="Thêm Người ký & Chức vụ"
@@ -1555,7 +1615,10 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                     <SearchableCombobox
                       label="Nơi nhận"
                       value={recipient}
-                      onChange={setRecipient}
+                      onChange={(val) => {
+                        setRecipient(val);
+                        saveLastFormDraft({ recipient: val });
+                      }}
                       options={formOptions.recipients}
                       placeholder="Chọn hoặc nhập nơi nhận..."
                       modalTitle="Thêm Nơi nhận mới"
@@ -1567,7 +1630,10 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
                     <SearchableCombobox
                       label="Phòng ban xử lý"
                       value={departmentCode}
-                      onChange={setDepartmentCode}
+                      onChange={(val) => {
+                        setDepartmentCode(val);
+                        saveLastFormDraft({ departmentCode: val });
+                      }}
                       options={formOptions.departments}
                       placeholder="VP, TCKT, HCNS, KD..."
                       uppercase

@@ -41,10 +41,18 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const modalInputRef = useRef<HTMLInputElement>(null);
 
-  // Lọc options dựa trên giá trị người dùng đang gõ
-  const filteredOptions = options.filter((opt) =>
-    opt.toLowerCase().includes((value || "").trim().toLowerCase())
-  );
+  // Lọc options dựa trên giá trị người dùng đang gõ (hỗ trợ cả tìm kiếm từng phần khi có dấu phẩy)
+  const trimmedFilter = (value || "").trim().toLowerCase();
+  const filteredOptions = options.filter((opt) => {
+    if (!trimmedFilter) return true;
+    const optLower = opt.toLowerCase();
+    if (optLower.includes(trimmedFilter)) return true;
+    if (trimmedFilter.includes(",") || trimmedFilter.includes(";")) {
+      const parts = trimmedFilter.split(/[,;]+/).map((p) => p.trim()).filter(Boolean);
+      return parts.some((p) => optLower.includes(p) || p.includes(optLower));
+    }
+    return false;
+  });
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -75,6 +83,30 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
     if (uppercase) val = val.toUpperCase();
     onChange(val);
     if (!isOpen) setIsOpen(true);
+  };
+
+  const handleInputBlur = () => {
+    const trimmed = (value || "").trim();
+    if (trimmed) {
+      // Tự động lưu giá trị mới vào danh mục nếu chưa tồn tại
+      const exists = options.some((opt) => opt.toLowerCase() === trimmed.toLowerCase());
+      if (!exists) {
+        onAddNewOption(trimmed);
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      const trimmed = (value || "").trim();
+      if (trimmed) {
+        const exists = options.some((opt) => opt.toLowerCase() === trimmed.toLowerCase());
+        if (!exists) {
+          onAddNewOption(trimmed);
+        }
+      }
+      setIsOpen(false);
+    }
   };
 
   const handleSelectOption = (opt: string) => {
@@ -130,6 +162,8 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
             type="text"
             value={value}
             onChange={handleInputChange}
+            onBlur={handleInputBlur}
+            onKeyDown={handleKeyDown}
             onFocus={() => setIsOpen(true)}
             placeholder={placeholder}
             className={`w-full pl-3 pr-8 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all ${
@@ -191,11 +225,22 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div>
-                      <span>Không có kết quả khớp với &ldquo;{value}&rdquo;</span>
-                      <div className="mt-1 text-[11px] text-slate-500">
-                        (Bạn vẫn có thể dùng giá trị này hoặc bấm nút &ldquo;+&rdquo; để lưu vào danh sách)
-                      </div>
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] block text-slate-500">
+                        Không có kết quả khớp với &ldquo;<strong className="text-slate-700">{value}</strong>&rdquo;
+                      </span>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          onAddNewOption((value || "").trim());
+                          setIsOpen(false);
+                        }}
+                        className="w-full py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 active:scale-98"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">Lưu &ldquo;{value}&rdquo; vào danh sách</span>
+                      </button>
                     </div>
                   )}
                 </div>
