@@ -1,3 +1,5 @@
+import { FormMetadataOptions, mergeFormMetadataOptions } from "./storage";
+
 export interface GoogleDriveConfig {
   clientId: string;
   apiKey: string;
@@ -713,6 +715,7 @@ export interface DriveDatabasePayload {
   categories: any[];
   documents: any[];
   deletedRecords?: { id: string; deletedAt: number }[];
+  formMetadataOptions?: FormMetadataOptions;
 }
 
 /**
@@ -963,9 +966,20 @@ export async function reconcileDuplicateDriveDatabases(
   let mergedCategories: any[] = canonicalPayload?.categories || [];
   let mergedDocuments: any[] = canonicalPayload?.documents || [];
   let mergedTombstones: { id: string; deletedAt: number }[] = canonicalPayload?.deletedRecords || [];
+  let mergedFormMetadata: FormMetadataOptions | undefined = canonicalPayload?.formMetadataOptions;
 
   for (const p of allPayloads) {
     if (p === canonicalPayload) continue;
+
+    // Hợp nhất formMetadataOptions
+    if (p.formMetadataOptions) {
+      if (!mergedFormMetadata) {
+        mergedFormMetadata = p.formMetadataOptions;
+      } else {
+        const { merged } = mergeFormMetadataOptions(mergedFormMetadata, p.formMetadataOptions);
+        mergedFormMetadata = merged;
+      }
+    }
 
     // Hợp nhất categories
     if (Array.isArray(p.categories)) {
@@ -1003,6 +1017,7 @@ export async function reconcileDuplicateDriveDatabases(
     categories: mergedCategories,
     documents: mergedDocuments,
     deletedRecords: mergedTombstones,
+    formMetadataOptions: mergedFormMetadata,
   };
 
   const sanitized = sanitizeDatabasePayload(updatedCanonicalPayload);
@@ -1254,11 +1269,22 @@ export async function saveDatabaseToGoogleDrive(
         payload.deletedRecords || []
       );
 
+      let mergedFormMetadata = current.formMetadataOptions;
+      if (payload.formMetadataOptions) {
+        if (!mergedFormMetadata) {
+          mergedFormMetadata = payload.formMetadataOptions;
+        } else {
+          const { merged: m } = mergeFormMetadataOptions(mergedFormMetadata, payload.formMetadataOptions);
+          mergedFormMetadata = m;
+        }
+      }
+
       return {
         ...payload,
         categories: mergedCats,
         documents: merged.documents,
         deletedRecords: merged.deletedRecords,
+        formMetadataOptions: mergedFormMetadata,
       };
     }
     return payload;

@@ -24,6 +24,7 @@ import {
   Check,
   Cloud,
   Loader2,
+  Zap,
 } from "lucide-react";
 import {
   DocumentCategory,
@@ -41,6 +42,7 @@ import {
   createSampleDocumentImage,
   getFormMetadataOptions,
   addFormMetadataOption,
+  autoRecordDocumentMetadataOptions,
   FormMetadataOptions,
   FormMetadataField,
 } from "../services/storage";
@@ -133,6 +135,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   const [driveDownloadProgressText, setDriveDownloadProgressText] = useState<string>("");
 
   // AI OCR status & Progress Bar
+  const [ocrMode, setOcrMode] = useState<"fast" | "full">("fast");
   const [isOcrProcessing, setIsOcrProcessing] = useState<boolean>(false);
   const [ocrProgress, setOcrProgress] = useState<number>(0);
   const [ocrProgressStage, setOcrProgressStage] = useState<string>("");
@@ -468,13 +471,20 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
   };
 
   // Perform AI OCR and Intelligent Classification với Thanh tiến trình trực quan (EFR-01, EFR-03 & EFR-04)
-  const triggerOcrAnalysis = async (imageBase64?: string, mimeType?: string, textContent?: string) => {
+  const triggerOcrAnalysis = async (
+    imageBase64?: string,
+    mimeType?: string,
+    textContent?: string,
+    overrideMode?: "fast" | "full"
+  ) => {
+    const activeMode = overrideMode || ocrMode;
+    const isFast = activeMode === "fast";
     setIsOcrProcessing(true);
     setOcrError("");
     setOcrConfidence(null);
     setOcrSuccessNote("");
-    setOcrProgress(8);
-    setOcrProgressStage("Đang nén & chuẩn bị dữ liệu văn bản...");
+    setOcrProgress(12);
+    setOcrProgressStage(isFast ? "Đang quét nhanh trích yếu (V/v)..." : "Đang nén & chuẩn bị dữ liệu văn bản...");
 
     if (progressTimerRef.current) {
       clearInterval(progressTimerRef.current);
@@ -483,20 +493,33 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     const startTime = Date.now();
     progressTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      if (elapsed < 1200) {
-        setOcrProgress((prev) => Math.min(32, prev + Math.floor(Math.random() * 4 + 2)));
-        setOcrProgressStage("Đang gửi dữ liệu đến Gemini AI...");
-      } else if (elapsed < 2800) {
-        setOcrProgress((prev) => Math.min(65, prev + Math.floor(Math.random() * 3 + 2)));
-        setOcrProgressStage("Đang nhận diện ký tự OCR văn bản...");
-      } else if (elapsed < 4800) {
-        setOcrProgress((prev) => Math.min(88, prev + Math.floor(Math.random() * 2 + 1)));
-        setOcrProgressStage("AI đang đọc trích yếu & cơ quan ban hành...");
+      if (isFast) {
+        if (elapsed < 600) {
+          setOcrProgress((prev) => Math.min(45, prev + Math.floor(Math.random() * 8 + 4)));
+          setOcrProgressStage("AI đang đọc trích yếu V/v & loại văn bản...");
+        } else if (elapsed < 1400) {
+          setOcrProgress((prev) => Math.min(85, prev + Math.floor(Math.random() * 5 + 3)));
+          setOcrProgressStage("Đang trích xuất cơ quan & ngày ban hành...");
+        } else {
+          setOcrProgress((prev) => Math.min(96, prev + 2));
+          setOcrProgressStage("Chuẩn bị hoàn tất...");
+        }
       } else {
-        setOcrProgress((prev) => Math.min(96, prev + 1));
-        setOcrProgressStage("Đang chuẩn hóa theo Nghị định 30 & điền form...");
+        if (elapsed < 1200) {
+          setOcrProgress((prev) => Math.min(32, prev + Math.floor(Math.random() * 4 + 2)));
+          setOcrProgressStage("Đang gửi dữ liệu đến Gemini AI...");
+        } else if (elapsed < 2800) {
+          setOcrProgress((prev) => Math.min(65, prev + Math.floor(Math.random() * 3 + 2)));
+          setOcrProgressStage("Đang nhận diện ký tự OCR văn bản...");
+        } else if (elapsed < 4800) {
+          setOcrProgress((prev) => Math.min(88, prev + Math.floor(Math.random() * 2 + 1)));
+          setOcrProgressStage("AI đang đọc trích yếu & cơ quan ban hành...");
+        } else {
+          setOcrProgress((prev) => Math.min(96, prev + 1));
+          setOcrProgressStage("Đang chuẩn hóa theo Nghị định 30 & điền form...");
+        }
       }
-    }, 160);
+    }, isFast ? 100 : 160);
 
     try {
       // 1. Lấy API Key cá nhân của người dùng (EFR-01 & EFR-03)
@@ -512,6 +535,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
       const payload: any = {
         categories: categories.map((c) => ({ code: c.code, name: c.name })),
+        mode: activeMode,
       };
 
       if (imageBase64) {
@@ -546,6 +570,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
             mimeType,
             textHint: textContent,
             categories: categories.map((c) => ({ code: c.code, name: c.name })),
+            mode: activeMode,
           });
         } else {
           throw new Error(json.error || `Lỗi máy chủ OCR (${res.status}). Vui lòng kiểm tra lại API Key.`);
@@ -559,6 +584,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
             mimeType,
             textHint: textContent,
             categories: categories.map((c) => ({ code: c.code, name: c.name })),
+            mode: activeMode,
           });
         }
       }
@@ -591,7 +617,11 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       if (d.secrecy) setSecrecy(d.secrecy as SecrecyLevel);
       if (d.keywords && Array.isArray(d.keywords)) setKeywords(d.keywords);
       if (d.confidence !== undefined) setOcrConfidence(Math.round(d.confidence * 100));
-      setOcrSuccessNote("✨ Đã trích xuất và nhận diện OCR toàn văn thành công!");
+      setOcrSuccessNote(
+        isFast
+          ? "⚡ Đã đọc nhanh trích yếu (V/v) và phân loại văn bản thành công (Tiết kiệm >90% token)!"
+          : "✨ Đã trích xuất và nhận diện OCR toàn văn thành công!"
+      );
 
       // Hoàn tất 100%
       if (progressTimerRef.current) {
@@ -631,8 +661,10 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
             <div className="flex items-center gap-2 truncate pr-2">
               {ocrProgress === 100 ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : ocrMode === "fast" ? (
+                <Zap className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
               ) : (
-                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+                <Sparkles className="w-4 h-4 text-blue-400 animate-pulse shrink-0" />
               )}
               <span className="truncate font-medium text-slate-200">{ocrProgressStage}</span>
             </div>
@@ -647,6 +679,8 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
               className={`h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden ${
                 ocrProgress === 100
                   ? "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-md shadow-emerald-500/50"
+                  : ocrMode === "fast"
+                  ? "bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500"
                   : "bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"
               }`}
               style={{ width: `${ocrProgress}%` }}
@@ -659,18 +693,64 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     }
 
     return (
-      <button
-        type="button"
-        id="btn-trigger-ai-ocr"
-        onClick={() => {
-          const targetImg = images[selectedImageIndex] || images[0];
-          triggerOcrAnalysis(targetImg.dataUrl, targetImg.mimeType);
-        }}
-        className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
-      >
-        <Sparkles className="w-4 h-4 text-amber-300" />
-        <span>✨ Quét AI & Tự động trích yếu</span>
-      </button>
+      <div className="space-y-1.5">
+        {/* Toggle chuyển đổi chế độ Cấp số nhanh V/v vs OCR Toàn văn */}
+        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-200/90 rounded-xl text-[11px] border border-slate-300/60">
+          <button
+            type="button"
+            onClick={() => setOcrMode("fast")}
+            className={`py-1 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              ocrMode === "fast"
+                ? "bg-white text-blue-700 shadow-xs font-bold"
+                : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}
+            title="Chỉ đọc phần V/v và tiêu đề ở đầu trang để cấp số ngay lập tức (1-2s, tiết kiệm token tối đa)"
+          >
+            <Zap className="w-3 h-3 text-amber-500" />
+            <span>Chỉ đọc V/v (Siêu tốc)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setOcrMode("full")}
+            className={`py-1 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              ocrMode === "full"
+                ? "bg-white text-indigo-700 shadow-xs font-bold"
+                : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}
+            title="Đọc toàn bộ văn bản và sinh bản tóm tắt nội dung chi tiết"
+          >
+            <FileText className="w-3 h-3 text-indigo-500" />
+            <span>OCR Toàn văn</span>
+          </button>
+        </div>
+
+        {/* Nút hành động OCR */}
+        <button
+          type="button"
+          id="btn-trigger-ai-ocr"
+          onClick={() => {
+            const targetImg = images[selectedImageIndex] || images[0];
+            triggerOcrAnalysis(targetImg.dataUrl, targetImg.mimeType, undefined, ocrMode);
+          }}
+          className={`w-full py-2.5 px-3 rounded-xl text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98 ${
+            ocrMode === "fast"
+              ? "bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-blue-500/20"
+              : "bg-gradient-to-r from-indigo-600 via-purple-600 to-slate-700 hover:from-indigo-500 hover:to-purple-500 shadow-indigo-500/20"
+          }`}
+        >
+          {ocrMode === "fast" ? (
+            <>
+              <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+              <span>⚡ Quét nhanh V/v & Cấp số tức thì (1-2s)</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>✨ Quét OCR toàn bộ bài & Tóm tắt</span>
+            </>
+          )}
+        </button>
+      </div>
     );
   };
   const handleIssueNumberAndSave = async () => {
@@ -768,6 +848,15 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      // Tự động ghi nhớ Người ký, Cơ quan ban hành, Nơi nhận, Phòng ban mới vào danh sách lựa chọn
+      const updatedOpts = autoRecordDocumentMetadataOptions({
+        issuingAuthority: issuingAuthority.trim(),
+        signer: signer.trim(),
+        recipient: recipient.trim(),
+        departmentCode: departmentCode.trim(),
+      });
+      setFormOptions({ ...updatedOpts });
+
       await onDocumentCreated(newDoc);
       setSuccessDoc(newDoc);
 

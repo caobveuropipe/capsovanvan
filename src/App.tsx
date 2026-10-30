@@ -32,6 +32,9 @@ import {
   addTombstone,
   updateTombstone,
   pruneTombstones,
+  getFormMetadataOptions,
+  reconcileAndSaveRemoteMetadataOptions,
+  mergeFormMetadataOptions,
 } from "./services/storage";
 import {
   getGoogleDriveConfig,
@@ -183,6 +186,11 @@ export default function App() {
         );
 
         if (remoteData) {
+          // Merge metadata options (Người ký, Đơn vị, Nơi nhận) từ remote vào local
+          if (remoteData.formMetadataOptions) {
+            reconcileAndSaveRemoteMetadataOptions(remoteData.formMetadataOptions);
+          }
+
           // Merge / Update categories: lấy cấu hình mới nhất và số đếm lớn nhất để không bao giờ bị nhảy lùi số
           if (Array.isArray(remoteData.categories) && remoteData.categories.length > 0) {
             const localCats = getCategories();
@@ -267,6 +275,7 @@ export default function App() {
           categories: localCats,
           documents: filteredDocs,
           deletedRecords: localTombstones.map((t) => ({ id: t.id, deletedAt: t.deletedAt })),
+          formMetadataOptions: getFormMetadataOptions(),
         }));
 
         if (isManual) {
@@ -449,6 +458,7 @@ export default function App() {
       const cleanDocs = updatedDocs.filter((d) => !deletedIds.has(d.id));
 
       await saveDatabaseWithConflictResolution(currentConfig.accessToken, currentConfig.folderId, (current) => {
+        const localMetadata = getFormMetadataOptions();
         if (!current) {
           return {
             version: 1,
@@ -457,6 +467,7 @@ export default function App() {
             categories: updatedCats,
             documents: cleanDocs,
             deletedRecords: localTombstones.map((t) => ({ id: t.id, deletedAt: t.deletedAt })),
+            formMetadataOptions: localMetadata,
           };
         }
 
@@ -467,6 +478,16 @@ export default function App() {
           localTombstones.map((t) => ({ id: t.id, deletedAt: t.deletedAt }))
         );
 
+        let mergedMetadata = current.formMetadataOptions;
+        if (localMetadata) {
+          if (!mergedMetadata) {
+            mergedMetadata = localMetadata;
+          } else {
+            const { merged: m } = mergeFormMetadataOptions(mergedMetadata, localMetadata);
+            mergedMetadata = m;
+          }
+        }
+
         return {
           ...current,
           lastUpdated: new Date().toISOString(),
@@ -474,6 +495,7 @@ export default function App() {
           categories: updatedCats,
           documents: merged.documents,
           deletedRecords: merged.deletedRecords,
+          formMetadataOptions: mergedMetadata,
         };
       });
     } catch (err: any) {

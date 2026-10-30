@@ -186,7 +186,8 @@ app.post("/api/ocr-classify", async (req, res) => {
       });
     }
 
-    const { imageBase64, mimeType = "image/jpeg", textHint = "", categories = [] } = req.body;
+    const { imageBase64, mimeType = "image/jpeg", textHint = "", categories = [], mode = "fast" } = req.body;
+    const isFastMode = mode === "fast";
 
     if (!imageBase64 && !textHint) {
       return res.status(400).json({ error: "Không tìm thấy hình ảnh hoặc nội dung văn bản để phân tích." });
@@ -198,7 +199,16 @@ app.post("/api/ocr-classify", async (req, res) => {
       ? categories.map((c: any) => `${c.code}: ${c.name}`).join(", ")
       : "QĐ (Quyết định), CV (Công văn), TTr (Tờ trình), HĐ (Hợp đồng), TB (Thông báo), BB (Biên bản), KH (Kế hoạch), BC (Báo cáo), GM (Giấy mời), CT (Chỉ thị), ĐX (Đề xuất)";
 
-    const systemPrompt = `Bạn là một chuyên viên văn thư lưu trữ và công nghệ AI xử lý văn bản hành chính Việt Nam (theo thể thức văn bản Nghị định 30/2020/NĐ-CP).
+    const systemPrompt = isFastMode
+      ? `Bạn là trợ lý AI văn thư hành chính tốc độ cao theo thể thức văn bản Việt Nam (Nghị định 30/2020/NĐ-CP).
+Nhiệm vụ: Trích xuất SIÊU TỐC thông tin đầu trang phục vụ CẤP SỐ VĂN BẢN NGAY LẬP TỨC.
+QUY TẮC CỐT LÕI ĐỂ TIẾT KIỆM THỜI GIAN VÀ TOKEN:
+1. CHỈ TẬP TRUNG đọc phần TRÍCH YẾU NỘI DUNG (các dòng bắt đầu bằng "V/v", "v/v", "Về việc", hoặc tiêu đề chính của văn bản ở nửa trên trang 1).
+2. Xác định Loại văn bản phù hợp nhất trong danh sách danh mục: [${categoryListStr}].
+3. Trích xuất Cơ quan ban hành, Ngày tháng văn bản, Người ký & chức vụ (nếu nhìn thấy).
+4. TUYỆT ĐỐI KHÔNG nhận diện toàn văn (không OCR toàn bộ các điều khoản, căn cứ luật). Không viết tóm tắt dài dòng.
+5. Trả về định dạng JSON ngắn gọn theo schema yêu cầu.`
+      : `Bạn là một chuyên viên văn thư lưu trữ và công nghệ AI xử lý văn bản hành chính Việt Nam (theo thể thức văn bản Nghị định 30/2020/NĐ-CP).
 Nhiệm vụ của bạn là:
 1. Nhận diện toàn bộ chữ (OCR) chính xác từ hình ảnh/nội dung văn bản được cung cấp.
 2. Phân tích nội dung và phân loại chính xác loại văn bản phù hợp nhất trong danh sách danh mục sau: [${categoryListStr}].
@@ -237,9 +247,49 @@ Nhiệm vụ của bạn là:
       });
     } else {
       contents.push({
-        text: "Hãy đọc văn bản này, trích xuất toàn bộ nội dung OCR và phân loại chính xác theo định dạng JSON yêu cầu.",
+        text: isFastMode
+          ? "Hãy đọc nhanh trích yếu (V/v...) và thông tin đầu trang để phân loại và cấp số văn bản ngay lập tức."
+          : "Hãy đọc văn bản này, trích xuất toàn bộ nội dung OCR và phân loại chính xác theo định dạng JSON yêu cầu.",
       });
     }
+
+    // Schema tối ưu cho fast mode vs full mode
+    const schemaProperties = isFastMode
+      ? {
+          categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
+          categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
+          confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
+          title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản (bắt đầu bằng V/v...)" },
+          issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
+          recipient: { type: Type.STRING, description: "Nơi nhận nếu có" },
+          signer: { type: Type.STRING, description: "Người ký và chức danh nếu có" },
+          documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
+          departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
+        }
+      : {
+          categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
+          categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
+          confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
+          title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
+          issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
+          recipient: { type: Type.STRING, description: "Nơi nhận" },
+          signer: { type: Type.STRING, description: "Người ký và chức danh" },
+          documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
+          departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
+          summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
+          ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
+          urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
+          secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
+          keywords: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Các từ khóa chính",
+          },
+        };
+
+    const requiredFields = isFastMode
+      ? ["categoryCode", "categoryName", "title"]
+      : ["categoryCode", "categoryName", "title", "ocrFullText", "summary"];
 
     // Danh sách các model ứng viên theo thứ tự ưu tiên: 3.5-flash -> 3.7-flash -> 3.8-flash -> flash-latest
     const candidateModels = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest"];
@@ -250,27 +300,8 @@ Nhiệm vụ của bạn là:
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
-          properties: {
-            categoryCode: { type: Type.STRING, description: "Mã loại danh mục phù hợp nhất" },
-            categoryName: { type: Type.STRING, description: "Tên loại văn bản" },
-            confidence: { type: Type.NUMBER, description: "Độ tin cậy từ 0 đến 1" },
-            title: { type: Type.STRING, description: "Trích yếu / Tiêu đề văn bản" },
-            issuingAuthority: { type: Type.STRING, description: "Cơ quan/đơn vị ban hành" },
-            recipient: { type: Type.STRING, description: "Nơi nhận" },
-            signer: { type: Type.STRING, description: "Người ký và chức danh" },
-            documentDate: { type: Type.STRING, description: "Ngày tháng văn bản" },
-            departmentCode: { type: Type.STRING, description: "Mã phòng ban gợi ý" },
-            summary: { type: Type.STRING, description: "Tóm tắt ngắn gọn nội dung" },
-            ocrFullText: { type: Type.STRING, description: "Toàn bộ nội dung OCR đã nhận diện" },
-            urgency: { type: Type.STRING, description: "Mức độ khẩn (THUONG, KHAN, THUONG_KHAN, HOA_TOC)" },
-            secrecy: { type: Type.STRING, description: "Mức độ mật (THUONG, MAT, TOI_MAT, TUYET_MAT)" },
-            keywords: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Các từ khóa chính",
-            },
-          },
-          required: ["categoryCode", "categoryName", "title", "ocrFullText", "summary"],
+          properties: schemaProperties,
+          required: requiredFields,
         },
       },
     };
@@ -280,13 +311,13 @@ Nhiệm vụ của bạn là:
 
     for (const modelName of candidateModels) {
       try {
-        console.log(`[OCR] Đang gọi model ${modelName}...`);
+        console.log(`[OCR - ${isFastMode ? "FAST" : "FULL"}] Đang gọi model ${modelName}...`);
         response = await ai.models.generateContent({
           model: modelName,
           ...modelConfig,
         });
         if (response && response.text) {
-          console.log(`[OCR] Model ${modelName} phản hồi thành công.`);
+          console.log(`[OCR - ${isFastMode ? "FAST" : "FULL"}] Model ${modelName} phản hồi thành công.`);
           break;
         }
       } catch (err: any) {
@@ -300,6 +331,15 @@ Nhiệm vụ của bạn là:
     }
 
     const parsedResult = JSON.parse(response.text || "{}");
+    if (isFastMode) {
+      if (!parsedResult.ocrFullText) parsedResult.ocrFullText = parsedResult.title || "";
+      if (!parsedResult.summary) parsedResult.summary = parsedResult.title || "";
+      if (!parsedResult.urgency) parsedResult.urgency = "THUONG";
+      if (!parsedResult.secrecy) parsedResult.secrecy = "THUONG";
+      if (!parsedResult.keywords || !Array.isArray(parsedResult.keywords) || parsedResult.keywords.length === 0) {
+        parsedResult.keywords = [parsedResult.categoryName || "Văn bản", parsedResult.departmentCode || "VP"].filter(Boolean);
+      }
+    }
     res.json({ success: true, data: parsedResult });
   } catch (error: any) {
     console.error("OCR & Classification error:", error);

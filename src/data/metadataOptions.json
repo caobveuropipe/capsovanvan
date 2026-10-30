@@ -1,6 +1,26 @@
 {
-  "issuingAuthorities": [],
-  "signers": [],
-  "recipients": [],
-  "departments": []
+  "issuingAuthorities": [
+    "Công ty Cổ phần VCCORP",
+    "Ban Quản trị / HĐQT",
+    "Ủy ban Nhân dân"
+  ],
+  "signers": [
+    "Nguyễn Văn An - Tổng Giám đốc",
+    "Trần Thị B - Trưởng phòng Hành chính",
+    "Lê Văn C - Phó Tổng Giám đốc"
+  ],
+  "recipients": [
+    "Ban Giám đốc, Các Phòng ban liên quan",
+    "Ban Giám đốc",
+    "Các Phòng ban liên quan",
+    "Lưu: VT, TCKT"
+  ],
+  "departments": [
+    "VP",
+    "TCKT",
+    "HCNS",
+    "KD",
+    "IT",
+    "BGD"
+  ]
 }

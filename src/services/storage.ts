@@ -758,3 +758,91 @@ export function addFormMetadataOption(field: FormMetadataField, value: string): 
   return current;
 }
 
+/**
+ * Hợp nhất 2 tập options metadata với logic loại bỏ trùng lặp (không phân biệt hoa thường)
+ */
+export function mergeFormMetadataOptions(
+  target: FormMetadataOptions,
+  source?: Partial<FormMetadataOptions> | null
+): { merged: FormMetadataOptions; hasChanges: boolean } {
+  if (!source) {
+    return { merged: { ...target }, hasChanges: false };
+  }
+
+  let hasChanges = false;
+  const mergeField = (base: string[], additions?: unknown): string[] => {
+    const result = [...base];
+    if (!Array.isArray(additions)) return result;
+
+    for (const item of additions) {
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        if (trimmed && !result.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())) {
+          result.push(trimmed);
+          hasChanges = true;
+        }
+      }
+    }
+    return result;
+  };
+
+  const merged: FormMetadataOptions = {
+    issuingAuthorities: mergeField(target.issuingAuthorities, source.issuingAuthorities),
+    signers: mergeField(target.signers, source.signers),
+    recipients: mergeField(target.recipients, source.recipients),
+    departments: mergeField(target.departments, source.departments),
+  };
+
+  return { merged, hasChanges };
+}
+
+/**
+ * Tự động ghi nhớ các giá trị Người ký, Cơ quan ban hành, Nơi nhận, Phòng ban khi tạo/cấp số văn bản
+ */
+export function autoRecordDocumentMetadataOptions(values: {
+  issuingAuthority?: string;
+  signer?: string;
+  recipient?: string;
+  departmentCode?: string;
+}): FormMetadataOptions {
+  const current = getFormMetadataOptions();
+  let hasChanges = false;
+
+  const checkAndPush = (field: FormMetadataField, val?: string) => {
+    if (!val) return;
+    const trimmed = val.trim();
+    if (!trimmed) return;
+    const exists = current[field].some((item) => item.toLowerCase() === trimmed.toLowerCase());
+    if (!exists) {
+      current[field].push(trimmed);
+      hasChanges = true;
+    }
+  };
+
+  checkAndPush("issuingAuthorities", values.issuingAuthority);
+  checkAndPush("signers", values.signer);
+  checkAndPush("recipients", values.recipient);
+  checkAndPush("departments", values.departmentCode);
+
+  if (hasChanges) {
+    saveFormMetadataOptions(current);
+  }
+
+  return current;
+}
+
+/**
+ * Cân chỉnh và lưu options metadata nhận được từ Google Drive vào localStorage
+ */
+export function reconcileAndSaveRemoteMetadataOptions(
+  remoteOptions?: Partial<FormMetadataOptions> | null
+): FormMetadataOptions {
+  const local = getFormMetadataOptions();
+  const { merged, hasChanges } = mergeFormMetadataOptions(local, remoteOptions);
+  if (hasChanges) {
+    saveFormMetadataOptions(merged);
+  }
+  return merged;
+}
+
+
