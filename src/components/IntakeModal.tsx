@@ -541,12 +541,15 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
         if (elapsed < 600) {
           setOcrProgress((prev) => Math.min(45, prev + Math.floor(Math.random() * 8 + 4)));
           setOcrProgressStage("AI đang đọc trích yếu V/v & loại văn bản...");
-        } else if (elapsed < 1400) {
+        } else if (elapsed < 1500) {
           setOcrProgress((prev) => Math.min(85, prev + Math.floor(Math.random() * 5 + 3)));
           setOcrProgressStage("Đang trích xuất cơ quan & ngày ban hành...");
+        } else if (elapsed < 3500) {
+          setOcrProgress((prev) => Math.min(95, prev + 1));
+          setOcrProgressStage("Đang xử lý qua Gemini 3.8 Flash...");
         } else {
-          setOcrProgress((prev) => Math.min(96, prev + 2));
-          setOcrProgressStage("Chuẩn bị hoàn tất...");
+          setOcrProgress(97);
+          setOcrProgressStage("Đang hoàn tất phân tích...");
         }
       } else {
         if (elapsed < 1200) {
@@ -577,12 +580,12 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
         );
       }
 
-      // 0. Tối ưu hóa dung lượng & cắt cúp thông minh ảnh trước khi gửi AI
+      // 0. Tối ưu hóa dung lượng & cắt cúp thông minh ảnh trước khi gửi AI (giữ nguyên PDF nếu là PDF)
       let imageToSend = imageBase64;
       let mimeToSend = mimeType || "image/jpeg";
-      if (imageToSend && imageToSend.startsWith("data:image/")) {
-        setOcrProgressStage("Đang nén & tối ưu hóa ảnh trước khi gửi AI...");
-        const opt = await optimizeImageForOcr(imageToSend, activeMode);
+      if (imageToSend) {
+        setOcrProgressStage("Đang chuẩn bị dữ liệu văn bản gửi AI...");
+        const opt = await optimizeImageForOcr(imageToSend, activeMode, mimeToSend);
         imageToSend = opt.dataUrl;
         mimeToSend = opt.mimeType;
       }
@@ -602,6 +605,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       }
 
       let d: any = null;
+      let triedDirectOcr = false;
       try {
         const ocrUrl = getAppApiUrl("/api/ocr-classify");
         const res = await fetch(ocrUrl, {
@@ -618,6 +622,7 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
           d = json.data;
         } else if (res.status === 405 || !res.ok) {
           console.warn(`[OCR] Backend proxy trả về ${res.status}, chuyển sang gọi trực tiếp Google AI...`);
+          triedDirectOcr = true;
           d = await executeDirectGoogleOcr({
             apiKey,
             imageBase64: imageToSend,
@@ -626,12 +631,11 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
             categories: categories.map((c) => ({ code: c.code, name: c.name })),
             mode: activeMode,
           });
-        } else {
-          throw new Error(json.error || `Lỗi máy chủ OCR (${res.status}). Vui lòng kiểm tra lại API Key.`);
         }
       } catch (backendErr: any) {
-        if (!d) {
+        if (!d && !triedDirectOcr) {
           console.warn("[OCR] Thử fallback gọi trực tiếp Google AI do:", backendErr?.message);
+          triedDirectOcr = true;
           d = await executeDirectGoogleOcr({
             apiKey,
             imageBase64: imageToSend,
@@ -640,6 +644,8 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
             categories: categories.map((c) => ({ code: c.code, name: c.name })),
             mode: activeMode,
           });
+        } else if (!d) {
+          throw backendErr;
         }
       }
 

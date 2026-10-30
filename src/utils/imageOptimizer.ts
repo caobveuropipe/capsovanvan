@@ -16,15 +16,30 @@ export interface OptimizedImageResult {
 
 export async function optimizeImageForOcr(
   dataUrl: string,
-  mode: "fast" | "full" = "fast"
+  mode: "fast" | "full" = "fast",
+  fallbackMime?: string
 ): Promise<OptimizedImageResult> {
   const originalSizeKb = Math.round((dataUrl.length * 0.75) / 1024);
 
-  // Nếu không phải ảnh bitmap (VD: SVG vector, PDF placeholder), giữ nguyên
+  // Trích xuất mimeType thực tế từ dataUrl header
+  const mimeMatch = dataUrl ? dataUrl.match(/^data:([^;]+);base64,/) : null;
+  const detectedMime = mimeMatch ? mimeMatch[1] : fallbackMime || "image/jpeg";
+
+  // Nếu là file PDF: bắt buộc giữ nguyên mimeType là application/pdf
+  if (detectedMime.includes("pdf") || dataUrl.startsWith("data:application/pdf")) {
+    return {
+      dataUrl,
+      mimeType: "application/pdf",
+      originalSizeKb,
+      optimizedSizeKb: originalSizeKb,
+    };
+  }
+
+  // Nếu không phải ảnh bitmap (VD: text, svg...), giữ nguyên mimeType đã nhận diện
   if (!dataUrl || !dataUrl.startsWith("data:image/")) {
     return {
       dataUrl,
-      mimeType: "image/jpeg",
+      mimeType: detectedMime,
       originalSizeKb,
       optimizedSizeKb: originalSizeKb,
     };
@@ -107,3 +122,4 @@ export async function optimizeImageForOcr(
     img.src = dataUrl;
   });
 }
+
