@@ -1,3 +1,5 @@
+import { OCR_MODELS, isModelUnavailable } from "./geminiModels";
+
 /**
  * directGeminiOcr.ts
  * Fallback gọi trực tiếp Google Generative Language REST API từ trình duyệt
@@ -88,19 +90,34 @@ Chỉ trả về JSON thuần túy hợp lệ.`;
     });
   }
 
-  const candidateModels = [
-    "gemini-3.8-flash",
-    "gemini-flash-latest",
-    "gemini-2.5-flash",
-  ];
+  // models.list is key-specific and avoids known 404s on the actual OCR POST.
+  // If discovery fails, the ordered fallback below still works.
+  let candidateModels: readonly string[] = OCR_MODELS;
+  try {
+    const listResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", {
+      headers: { "x-goog-api-key": trimmedKey },
+    });
+    if (listResponse.ok) {
+      const modelList = await listResponse.json();
+      const available = new Set(
+        (modelList.models || [])
+          .filter((model: any) => model.supportedGenerationMethods?.includes("generateContent"))
+          .map((model: any) => String(model.name).replace(/^models\//, ""))
+      );
+      const supported = OCR_MODELS.filter((model) => available.has(model));
+      if (supported.length > 0) candidateModels = supported;
+    }
+  } catch {
+    // Discovery is optional; the generateContent request remains authoritative.
+  }
   let lastError: any = null;
 
   for (const model of candidateModels) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(trimmedKey)}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": trimmedKey },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ parts }],
@@ -113,7 +130,7 @@ Chỉ trả về JSON thuần túy hợp lệ.`;
       const resJson = await res.json().catch(() => ({}));
       if (!res.ok) {
         const errorMsg = resJson?.error?.message || `HTTP ${res.status}`;
-        throw new Error(errorMsg);
+        throw new Error(`${res.status}: ${errorMsg}`);
       }
 
       const candidateParts = resJson?.candidates?.[0]?.content?.parts || [];
@@ -140,7 +157,7 @@ Chỉ trả về JSON thuần túy hợp lệ.`;
       return parsed;
     } catch (err: any) {
       lastError = err;
-      console.warn(`[Direct Google OCR] Model ${model} gặp lỗi:`, err?.message || err);
+      if (!isModelUnavailable(err)) throw err;
     }
   }
 

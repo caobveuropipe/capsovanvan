@@ -4,6 +4,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import { GoogleGenAI, Type } from "@google/genai";
+import { OCR_MODELS, isModelUnavailable } from "./src/services/geminiModels";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -140,24 +141,19 @@ app.post("/api/verify-gemini-key", async (req, res) => {
     }
 
     const ai = getGeminiClient(apiKey);
-    // Ping thử nghiệm nhẹ nhàng với model Gemini Flash mới nhất
+    // Verify against the same candidate set used by OCR.
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: "Xin chào",
-      });
-    } catch (err: any) {
-      // Fallback sang gemini-1.5-flash hoặc gemini-2.5-flash nếu cần
-      if (err?.message?.includes("not found") || err?.message?.includes("404")) {
-        response = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: "Xin chào",
-        });
-      } else {
-        throw err;
+    let lastError: any;
+    for (const model of OCR_MODELS) {
+      try {
+        response = await ai.models.generateContent({ model, contents: "Xin chào" });
+        if (response?.text) break;
+      } catch (err: any) {
+        lastError = err;
+        if (!isModelUnavailable(err)) throw err;
       }
     }
+    if (!response?.text && lastError) throw lastError;
 
     if (response && response.text) {
       return res.json({ success: true, message: "Kết nối Gemini API thành công!" });
@@ -291,12 +287,8 @@ Nhiệm vụ của bạn là:
       ? ["categoryCode", "categoryName", "title"]
       : ["categoryCode", "categoryName", "title", "ocrFullText", "summary"];
 
-    // Danh sách các model ứng viên theo thứ tự ưu tiên: 3.5-flash -> 3.7-flash -> 3.8-flash -> flash-latest
-    const candidateModels = [
-      "gemini-3.8-flash",
-      "gemini-flash-latest",
-      "gemini-2.5-flash",
-    ];
+    // Danh sách các model ứng viên theo thứ tự ưu tiên cho OCR.
+    const candidateModels = OCR_MODELS;
     const modelConfig = {
       contents: { parts: contents },
       config: {
@@ -326,7 +318,7 @@ Nhiệm vụ của bạn là:
         }
       } catch (err: any) {
         lastError = err;
-        console.warn(`[OCR] Model ${modelName} gặp lỗi:`, err?.message || err);
+        if (!isModelUnavailable(err)) throw err;
       }
     }
 

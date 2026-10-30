@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { OCR_MODELS, isModelUnavailable } from "../src/services/geminiModels";
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
@@ -78,7 +79,7 @@ Nhiệm vụ của bạn là:
       });
     }
 
-    const candidateModels = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest"];
+    const candidateModels = OCR_MODELS;
     const modelConfig = {
       contents: { parts: contents },
       config: {
@@ -126,7 +127,7 @@ Nhiệm vụ của bạn là:
         }
       } catch (err: any) {
         lastError = err;
-        console.warn(`[Vercel OCR] Model ${modelName} gặp lỗi:`, err?.message || err);
+        if (!isModelUnavailable(err)) throw err;
       }
     }
 

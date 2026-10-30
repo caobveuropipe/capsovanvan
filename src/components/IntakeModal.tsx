@@ -537,36 +537,9 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
     const startTime = Date.now();
     progressTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      if (isFast) {
-        if (elapsed < 600) {
-          setOcrProgress((prev) => Math.min(45, prev + Math.floor(Math.random() * 8 + 4)));
-          setOcrProgressStage("AI đang đọc trích yếu V/v & loại văn bản...");
-        } else if (elapsed < 1500) {
-          setOcrProgress((prev) => Math.min(85, prev + Math.floor(Math.random() * 5 + 3)));
-          setOcrProgressStage("Đang trích xuất cơ quan & ngày ban hành...");
-        } else if (elapsed < 3500) {
-          setOcrProgress((prev) => Math.min(95, prev + 1));
-          setOcrProgressStage("Đang xử lý qua Gemini 3.8 Flash...");
-        } else {
-          setOcrProgress(97);
-          setOcrProgressStage("Đang hoàn tất phân tích...");
-        }
-      } else {
-        if (elapsed < 1200) {
-          setOcrProgress((prev) => Math.min(32, prev + Math.floor(Math.random() * 4 + 2)));
-          setOcrProgressStage("Đang gửi dữ liệu đến Gemini AI...");
-        } else if (elapsed < 2800) {
-          setOcrProgress((prev) => Math.min(65, prev + Math.floor(Math.random() * 3 + 2)));
-          setOcrProgressStage("Đang nhận diện ký tự OCR văn bản...");
-        } else if (elapsed < 4800) {
-          setOcrProgress((prev) => Math.min(88, prev + Math.floor(Math.random() * 2 + 1)));
-          setOcrProgressStage("AI đang đọc trích yếu & cơ quan ban hành...");
-        } else {
-          setOcrProgress((prev) => Math.min(96, prev + 1));
-          setOcrProgressStage("Đang chuẩn hóa theo Nghị định 30 & điền form...");
-        }
-      }
-    }, isFast ? 100 : 160);
+      setOcrProgress(Math.min(85, 12 + Math.floor(elapsed / 500)));
+      setOcrProgressStage(isFast ? "Đang chờ AI đọc trích yếu văn bản..." : "Đang chờ AI nhận diện toàn văn...");
+    }, 500);
 
     try {
       // 1. Lấy API Key cá nhân của người dùng (EFR-01 & EFR-03)
@@ -607,43 +580,35 @@ export const IntakeModal: React.FC<IntakeModalProps> = ({
       let d: any = null;
       let triedDirectOcr = false;
       try {
-        const ocrUrl = getAppApiUrl("/api/ocr-classify");
-        const res = await fetch(ocrUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-gemini-api-key": apiKey,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json.success && json.data) {
-          d = json.data;
-        } else if (res.status === 405 || !res.ok) {
-          console.warn(`[OCR] Backend proxy trả về ${res.status}, chuyển sang gọi trực tiếp Google AI...`);
+        // This gateway does not forward the OCR POST; skip its predictable 405.
+        if (window.location.pathname.startsWith("/app/cap-so-van-ban")) {
           triedDirectOcr = true;
-          d = await executeDirectGoogleOcr({
-            apiKey,
-            imageBase64: imageToSend,
-            mimeType: mimeToSend,
-            textHint: textContent,
-            categories: categories.map((c) => ({ code: c.code, name: c.name })),
-            mode: activeMode,
+          d = await executeDirectGoogleOcr({ apiKey, ...payload });
+        } else {
+          const ocrUrl = getAppApiUrl("/api/ocr-classify");
+          const res = await fetch(ocrUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-gemini-api-key": apiKey,
+            },
+            body: JSON.stringify(payload),
           });
+
+          const json = await res.json().catch(() => ({}));
+          if (res.ok && json.success && json.data) {
+            d = json.data;
+          } else if (res.status === 405 || res.status === 404) {
+            triedDirectOcr = true;
+            d = await executeDirectGoogleOcr({ apiKey, ...payload });
+          } else {
+            throw new Error(json.error || `OCR API trả về HTTP ${res.status}`);
+          }
         }
       } catch (backendErr: any) {
-        if (!d && !triedDirectOcr) {
-          console.warn("[OCR] Thử fallback gọi trực tiếp Google AI do:", backendErr?.message);
+        if (!d && !triedDirectOcr && backendErr instanceof TypeError) {
           triedDirectOcr = true;
-          d = await executeDirectGoogleOcr({
-            apiKey,
-            imageBase64: imageToSend,
-            mimeType: mimeToSend,
-            textHint: textContent,
-            categories: categories.map((c) => ({ code: c.code, name: c.name })),
-            mode: activeMode,
-          });
+          d = await executeDirectGoogleOcr({ apiKey, ...payload });
         } else if (!d) {
           throw backendErr;
         }
